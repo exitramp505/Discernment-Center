@@ -1,0 +1,11 @@
+{
+  "scripts": {
+    "dev": "netlify dev",
+    "build": "echo static app"
+  },
+  "dependencies": {
+    "resend": "latest",
+    "@netlify/blobs": "latest"
+  },
+  "devDependencies": {}
+}

@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Discernment Center Admin</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <section class="hero adminHero">
+      <h1>Discernment Center Admin Dashboard</h1>
+      <p>View stored candidate assessment submissions, open reports, and print or save reports as PDFs.</p>
+      <p><a href="index.html">← Back to assessment</a></p>
+    </section>
+
+    <section id="loginCard" class="card">
+      <h2>Admin Login</h2>
+      <p class="muted">Enter the admin password configured in Netlify.</p>
+      <label>Admin Password
+        <input id="adminPassword" type="password" autocomplete="current-password">
+      </label>
+      <button id="loginBtn" type="button">View Submissions</button>
+      <p id="loginMessage" class="muted"></p>
+    </section>
+
+    <section id="dashboard" class="hidden">
+      <div class="card dashboardTools">
+        <h2>Submissions</h2>
+        <div class="toolGrid">
+          <label>Search
+            <input id="searchInput" placeholder="Candidate name, email, state">
+          </label>
+          <label>State
+            <select id="stateFilter"><option value="">All states</option></select>
+          </label>
+          <label>Sort
+            <select id="sortSelect">
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="highest">Highest overall</option>
+              <option value="lowest">Lowest overall</option>
+              <option value="name">Name A-Z</option>
+            </select>
+          </label>
+        </div>
+        <div class="actions slimActions">
+          <button id="refreshBtn" type="button">Refresh</button>
+          <button id="logoutBtn" type="button" class="secondaryBtn">Logout</button>
+        </div>
+        <p id="countLine" class="muted"></p>
+      </div>
+
+      <div id="submissionsList" class="adminList"></div>
+      <section id="adminReport" class="report hidden"></section>
+    </section>
+  </main>
+  <script src="admin.js"></script>
+</body>
+</html>
