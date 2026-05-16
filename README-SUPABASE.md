@@ -35,3 +35,7 @@ https://your-site.netlify.app/dashboard.html
 
 ## 5. Notes
 Reports are still emailed through Resend. They are stored in Supabase and also stored in Netlify Blobs as a fallback.
+
+## Ministry Readiness Inventory
+
+This version adds a second assessment at `/isa-assessment.html` and links it from the candidate dashboard. Results are stored in the existing `assessment_results` table with `scores.assessmentType = "isa_readiness"`.

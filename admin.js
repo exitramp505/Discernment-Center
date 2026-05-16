@@ -100,10 +100,10 @@ function card(r){
   return `<div class="card submissionCard">
     <div class="submissionTop">
       <div>
-        <h3>${esc(r.name||'Unnamed Candidate')}</h3>
+        <h3>${esc(r.name||'Unnamed Candidate')}</h3><p class="muted"><strong>${esc(r.assessmentTitle || (r.assessmentType==='isa_readiness'?'Ministry Readiness Inventory':'Character Qualities Assessment'))}</strong></p>
         <p class="muted">${esc(date)} · ${esc(STATES[r.state]||r.state||'No state')} · ${esc(region)} Region</p>
       </div>
-      <div class="scoreBadge"><strong>${esc(r.overall||'')}</strong><span>${esc(r.overallLabel||'')}</span></div>
+      <div class="scoreBadge"><strong>${esc(r.overall||'')}${r.assessmentType==='isa_readiness'?'%':''}</strong><span>${esc(r.overallLabel||'')}</span></div>
     </div>
     <div class="submissionMeta">
       <span>${esc(r.email||'')}</span>
@@ -125,12 +125,12 @@ async function downloadReport(){
  const payload=window.currentAdminReport;
  if(!payload){return}
  const candidate=payload.candidate||{};
- const fileName=`${safeFileName(candidate.name)}-discernment-report.pdf`;
+ const isIsa=(payload.scores||{}).assessmentType==='isa_readiness'; const fileName=`${safeFileName(candidate.name)}-${isIsa?'ministry-readiness':'discernment'}-report.pdf`;
  const btn=event && event.target ? event.target : null;
  const originalText=btn ? btn.textContent : '';
  if(btn){btn.disabled=true;btn.textContent='Preparing PDF...'}
  try{
-  const res=await fetch('/.netlify/functions/report-pdf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  const res=await fetch(isIsa?'/.netlify/functions/report-isa-pdf':'/.netlify/functions/report-pdf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
   if(!res.ok){
     const data=await res.json().catch(()=>({}));
     throw new Error(data.error||'Could not generate the PDF.');
@@ -169,7 +169,12 @@ function chartColor(score){if(score===null)return '#94a3b8'; const val=Number(sc
 function visualScoreChart(results){results=results||[]; return `<section class="reportSection"><h3>Character Quality Score Profile</h3><p class="muted">The center line is the baseline score of 3.0. Each dot shows where that quality landed in relation to the baseline.</p><div class="profileLegend"><span>Lower</span><span>Baseline: 3.0</span><span>Higher</span></div><div class="profileChart">${results.map(x=>{const hasScore=!(x.score===null||x.score===undefined); const point=hasScore?((Number(x.score)-1)/4)*100:50; const width=hasScore?Math.abs(point-50):0; const left=hasScore?Math.min(point,50):50; const color=chartColor(x.score); return `<div class="profileRow"><div class="profileName">${qualityNameHtml(x.name)}</div><div class="profileTrack"><span class="baselineMarker"></span>${hasScore?`<span class="deviationBar" style="left:${left}%;width:${width}%;background:${color};"></span><span class="scoreDot" style="left:${point}%;background:${color};"></span>`:`<span class="naDot">N/A</span>`}</div><div class="profileValue"><strong>${esc(x.score??'N/A')}</strong><span>${esc(x.label)}</span></div></div>`}).join('')}</div></section>`}
 function characterQualityDefinitions(results){const scoreMap=Object.fromEntries((results||[]).map(x=>[x.name,x])); return `<section class="reportSection"><h3>Character Quality Descriptions</h3><p class="muted">Use these descriptions as a quick guide for interpreting what each category is looking for. <strong>Knock-out Factor</strong> categories are marked with an asterisk and a small badge.</p><div class="qualityGrid">${SECTION_NAMES.map(name=>{const x=scoreMap[name]||{}; return `<article class="qualityCard ${KNOCKOUT_QUALITIES.has(name)?'knockoutCard':''}"><div class="qualityCardTop"><div><h4>${qualityNameHtml(name)}</h4>${knockoutBadge(name)}</div><span class="qualityScore ${scoreToneClass(x.score)}" style="${scoreBadgeStyle(x.score)}">${esc(x.score??'N/A')} <em>${esc(x.label||'')}</em></span></div><p>${esc(QUALITY_DEFINITIONS[name]||'')}</p></article>`}).join('')}</div></section>`}
 function categoryTable(results){return `<table><tr><th>Character Quality</th><th>Score</th><th>Interpretation</th></tr>${(results||[]).map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.score??'N/A')}</td><td>${esc(x.label)}</td></tr>`).join('')}</table>`}
+
+function isaBar(v,color){return `<div class="isaBar"><span style="width:${Number(v)||0}%;background:${color}"></span><em>${esc(v)}%</em></div>`}
+function isaReportHtml(record){const c=record.candidate||{}; const s=record.scores||{}; return `<h2>Ministry Readiness Inventory Report</h2><div class="reportMeta"><p><strong>Submission ID:</strong> ${esc(record.id||'')}<br><strong>Submitted:</strong> ${esc(record.submittedAt?new Date(record.submittedAt).toLocaleString():'')}<br><strong>Candidate:</strong> ${esc(c.name||'')}<br><strong>Email:</strong> ${esc(c.email||'')}<br><strong>Phone:</strong> ${esc(c.phone||'')}<br><strong>State:</strong> ${esc(STATES[c.state]||c.state||'')}<br><strong>Region:</strong> ${esc(regionForState(c.state))} Region</p><div class="overallCard"><span>Overall Readiness</span><strong>${esc(s.overall||record.overall)}%</strong><em>${esc(s.overallLabel||record.overallLabel||'')}</em></div></div><section class="reportSection"><h3>Readiness Profile</h3><p class="muted">This assessment summarizes practical ministry experience and leadership readiness across four areas.</p>${(s.categories||[]).map(cat=>`<div class="isaCompareRow"><strong>${esc(cat.name)}</strong>${isaBar(cat.score,'#2a9d8f')}<small>Benchmark: ${esc(cat.benchmark)}% · Median: ${esc(cat.median)}%</small></div>`).join('')}</section><section class="reportSection"><h3>Category Descriptions</h3><div class="qualityGrid">${(s.categories||[]).map(cat=>`<article class="qualityCard"><div class="qualityCardTop"><h4>${esc(cat.name)}</h4><span class="qualityScore scoreAbove">${esc(cat.score)}% <em>${esc(cat.label)}</em></span></div><p>${esc(cat.description||'')}</p></article>`).join('')}</div></section>`}
+
 function reportHtml(record){
+  if ((record.scores||{}).assessmentType === 'isa_readiness') return isaReportHtml(record);
   const c=record.candidate||{};
   const s=record.scores||{};
   const r=record.reflections||{};

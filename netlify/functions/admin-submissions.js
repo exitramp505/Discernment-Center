@@ -74,7 +74,9 @@ function summaryFromSupabase(row) {
     growth: s.growth || [],
     routedLeader: row.routed_leader || '',
     emailSent: Boolean(row.email_sent),
-    emailError: row.email_error || ''
+    emailError: row.email_error || '',
+    assessmentType: s.assessmentType || '',
+    assessmentTitle: s.assessmentTitle || ''
   };
 }
 function recordFromSupabase(row) {
@@ -92,6 +94,6 @@ function recordFromSupabase(row) {
 function summary(record) {
   const c = record.candidate || {};
   const s = record.scores || {};
-  return { id: record.id, submittedAt: record.submittedAt, name: c.name || '', email: c.email || '', phone: c.phone || '', state: c.state || '', married: c.married || '', overall: s.overall ?? '', overallLabel: s.overallLabel || '', top: s.top || [], growth: s.growth || [], routedLeader: record.routedLeader || '', emailSent: Boolean(record.emailSent), emailError: record.emailError || '' };
+  return { id: record.id, submittedAt: record.submittedAt, name: c.name || '', email: c.email || '', phone: c.phone || '', state: c.state || '', married: c.married || '', overall: s.overall ?? '', overallLabel: s.overallLabel || '', top: s.top || [], growth: s.growth || [], routedLeader: record.routedLeader || '', emailSent: Boolean(record.emailSent), emailError: record.emailError || '', assessmentType: s.assessmentType || '', assessmentTitle: s.assessmentTitle || '' };
 }
 function json(statusCode, body) { return { statusCode, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }; }
