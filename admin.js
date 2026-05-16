@@ -26,18 +26,22 @@ const SECTION_NAMES=['Resilience','Spousal Cooperation','Financial Responsibilit
 
 const STATES={AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',CO:'Colorado',CT:'Connecticut',DE:'Delaware',FL:'Florida',GA:'Georgia',HI:'Hawaii',ID:'Idaho',IL:'Illinois',IN:'Indiana',IA:'Iowa',KS:'Kansas',KY:'Kentucky',LA:'Louisiana',ME:'Maine',MD:'Maryland',MA:'Massachusetts',MI:'Michigan',MN:'Minnesota',MS:'Mississippi',MO:'Missouri',MT:'Montana',NE:'Nebraska',NV:'Nevada',NH:'New Hampshire',NJ:'New Jersey',NM:'New Mexico',NY:'New York',NC:'North Carolina',ND:'North Dakota',OH:'Ohio',OK:'Oklahoma',OR:'Oregon',PA:'Pennsylvania',RI:'Rhode Island',SC:'South Carolina',SD:'South Dakota',TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',VA:'Virginia',WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming'};
 
+const REGION_BY_STATE={WA:'Pacific',HI:'Pacific',AK:'Pacific',AZ:'Pacific',UT:'Pacific',CA:'Pacific',NV:'Pacific',ID:'Pacific',OR:'Pacific',TX:'Central',OK:'Central',AR:'Central',WI:'Central',MN:'Central',IA:'Central',IL:'Central',MO:'Central',KS:'Central',CO:'Mountain Plains',WY:'Mountain Plains',NE:'Mountain Plains',SD:'Mountain Plains',ND:'Mountain Plains',MT:'Mountain Plains',NH:'East',VT:'East',MA:'East',ME:'East',RI:'East',CT:'East',NJ:'East',DE:'East',MD:'East',WV:'East',PA:'East',OH:'East',VA:'East',KY:'East',TN:'East',IN:'East',MI:'East',NY:'East',FL:'South East',GA:'South East',AL:'South East',MS:'South East',LA:'South East',SC:'South East',NC:'South East',PR:'South East'};
+const REGION_ORDER=['Pacific','Mountain Plains','Central','East','South East'];
+function regionForState(state){return REGION_BY_STATE[state]||'Unassigned'}
+
 let password='';
 let submissions=[];
 
 function initAdmin(){
-  stateFilter.innerHTML='<option value="">All states</option>'+Object.entries(STATES).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
+  regionFilter.innerHTML='<option value="">All regions</option>'+REGION_ORDER.map(region=>`<option value="${region}">${region}</option>`).join('');
   password=sessionStorage.getItem('dc_admin_password')||'';
   if(password){adminPassword.value=password;loadSubmissions();}
   loginBtn.addEventListener('click',()=>{password=adminPassword.value.trim();sessionStorage.setItem('dc_admin_password',password);loadSubmissions();});
   refreshBtn.addEventListener('click',loadSubmissions);
   logoutBtn.addEventListener('click',()=>{sessionStorage.removeItem('dc_admin_password');password='';dashboard.classList.add('hidden');loginCard.classList.remove('hidden');adminPassword.value='';});
   searchInput.addEventListener('input',renderList);
-  stateFilter.addEventListener('change',renderList);
+  regionFilter.addEventListener('change',renderList);
   sortSelect.addEventListener('change',renderList);
 }
 
@@ -68,17 +72,18 @@ async function loadSubmissions(){
 function renderList(){
   let rows=[...submissions];
   const q=(searchInput.value||'').toLowerCase().trim();
-  const st=stateFilter.value;
+  const selectedRegion=regionFilter.value;
   if(q){
-    rows=rows.filter(r=>`${r.name} ${r.email} ${r.phone} ${r.state} ${STATES[r.state]||''} ${r.overallLabel}`.toLowerCase().includes(q));
+    rows=rows.filter(r=>`${r.name} ${r.email} ${r.phone} ${r.state} ${STATES[r.state]||''} ${regionForState(r.state)} ${r.overallLabel}`.toLowerCase().includes(q));
   }
-  if(st) rows=rows.filter(r=>r.state===st);
+  if(selectedRegion) rows=rows.filter(r=>regionForState(r.state)===selectedRegion);
   const sort=sortSelect.value;
   rows.sort((a,b)=>{
     if(sort==='oldest') return new Date(a.submittedAt||0)-new Date(b.submittedAt||0);
     if(sort==='highest') return Number(b.overall||0)-Number(a.overall||0);
     if(sort==='lowest') return Number(a.overall||0)-Number(b.overall||0);
     if(sort==='name') return String(a.name||'').localeCompare(String(b.name||''));
+    if(sort==='region') return regionForState(a.state).localeCompare(regionForState(b.state)) || String(a.name||'').localeCompare(String(b.name||''));
     return new Date(b.submittedAt||0)-new Date(a.submittedAt||0);
   });
   countLine.textContent=`Showing ${rows.length} of ${submissions.length} stored submission${submissions.length===1?'':'s'}.`;
@@ -91,17 +96,19 @@ function card(r){
   const date=r.submittedAt?new Date(r.submittedAt).toLocaleString():'Unknown date';
   const top=(r.top||[]).map(x=>x.name).join(', ')||'None listed';
   const growth=(r.growth||[]).map(x=>x.name).join(', ')||'None listed';
+  const region=regionForState(r.state);
   return `<div class="card submissionCard">
     <div class="submissionTop">
       <div>
         <h3>${esc(r.name||'Unnamed Candidate')}</h3>
-        <p class="muted">${esc(date)} · ${esc(STATES[r.state]||r.state||'No state')}</p>
+        <p class="muted">${esc(date)} · ${esc(STATES[r.state]||r.state||'No state')} · ${esc(region)} Region</p>
       </div>
       <div class="scoreBadge"><strong>${esc(r.overall||'')}</strong><span>${esc(r.overallLabel||'')}</span></div>
     </div>
     <div class="submissionMeta">
       <span>${esc(r.email||'')}</span>
       <span>${esc(r.phone||'')}</span>
+      <span>Region: ${esc(region)}</span>
       <span>Married: ${esc(r.married||'')}</span>
       <span>Email: ${r.emailSent?'Sent':'Not sent'}</span>
     </div>
@@ -110,12 +117,37 @@ function card(r){
   </div>`;
 }
 
+
+function safeFileName(value){
+ return String(value||'discernment-report').trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,80)||'discernment-report';
+}
+function downloadReport(){
+ if(!window.currentAdminReport){return}
+ const reportClone=adminReport.cloneNode(true);
+ const actions=reportClone.querySelectorAll('.actions');
+ actions.forEach(el=>el.remove());
+ const styles=Array.from(document.querySelectorAll('style,link[rel="stylesheet"]')).map(el=>el.outerHTML).join('\n');
+ const candidate=(window.currentAdminReport.candidate||{});
+ const fileName=`${safeFileName(candidate.name)}-discernment-report.html`;
+ const html=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Discernment Center Report</title>${styles}</head><body><main><section class="report">${reportClone.innerHTML}</section></main></body></html>`;
+ const blob=new Blob([html],{type:'text/html;charset=utf-8'});
+ const url=URL.createObjectURL(blob);
+ const a=document.createElement('a');
+ a.href=url;
+ a.download=fileName;
+ document.body.appendChild(a);
+ a.click();
+ a.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),500);
+}
+
 async function openReport(id){
   adminReport.classList.remove('hidden');
   adminReport.innerHTML='<p class="muted">Loading report...</p>';
   try{
     const data=await adminFetch({id});
-    adminReport.innerHTML=reportHtml(data.submission)+`<div class="actions"><button onclick="window.print()">Print or Save PDF</button></div>`;
+    window.currentAdminReport=data.submission;
+    adminReport.innerHTML=reportHtml(data.submission)+`<div class="actions"><button type="button" onclick="downloadReport()">Download Report</button></div>`;
     window.scrollTo({top:adminReport.offsetTop-10,behavior:'smooth'});
   }catch(err){
     adminReport.innerHTML=`<p class="warningText">${esc(err.message)}</p>`;
@@ -138,6 +170,7 @@ function reportHtml(record){
   <strong>Email:</strong> ${esc(c.email||'')}<br>
   <strong>Phone:</strong> ${esc(c.phone||'')}<br>
   <strong>State:</strong> ${esc(STATES[c.state]||c.state||'')}<br>
+  <strong>Region:</strong> ${esc(regionForState(c.state))} Region<br>
   <strong>Married:</strong> ${esc(c.married||'')}<br>
   <strong>Routed Leader:</strong> ${esc(record.routedLeader||'')}<br>
   <strong>Email Status:</strong> ${record.emailSent?'Sent':'Not sent'}</p><div class="overallCard"><span>Overall Readiness</span><strong>${esc(s.overall||'')}</strong><em>${esc(s.overallLabel||'')}</em></div></div>

@@ -101,7 +101,7 @@ function submit(e){
  const scores=calc();
  const html=reportHtml(candidate,scores);
  window.currentReport={candidate,scores,answers,reflections:{}};
- report.innerHTML=html+`<div class="actions"><button onclick="window.print()">Print or Save PDF</button></div><div id="sendStatus" class="sendStatus">Sending and storing report...</div>`;
+ report.innerHTML=html+`<div class="actions"><button type="button" onclick="downloadReport()">Download Report</button></div><div id="sendStatus" class="sendStatus">Sending and storing report...</div>`;
  report.classList.remove('hidden');
  window.scrollTo({top:report.offsetTop,behavior:'smooth'});
  sendReport();
@@ -120,6 +120,31 @@ function visualScoreChart(results){return `<section class="reportSection"><h3>Ch
 function characterQualityDefinitions(results){const scoreMap=Object.fromEntries((results||[]).map(r=>[r.name,r])); return `<section class="reportSection"><h3>Character Quality Descriptions</h3><p class="muted">Use these descriptions as a quick guide for interpreting what each category is looking for. <strong>Knock-out Factor</strong> categories are marked with an asterisk and a small badge.</p><div class="qualityGrid">${sections.map(s=>{const name=s[0]; const r=scoreMap[name]||{}; return `<article class="qualityCard ${KNOCKOUT_QUALITIES.has(name)?'knockoutCard':''}"><div class="qualityCardTop"><div><h4>${qualityNameHtml(name)}</h4>${knockoutBadge(name)}</div><span class="qualityScore ${scoreToneClass(r.score)}" style="${scoreBadgeStyle(r.score)}">${r.score??'N/A'} <em>${r.label||''}</em></span></div><p>${QUALITY_DEFINITIONS[name]||''}</p></article>`}).join('')}</div></section>`}
 function categoryTable(results){return `<table><tr><th>Character Quality</th><th>Score</th><th>Interpretation</th></tr>${results.map(r=>`<tr><td>${r.name}</td><td>${r.score??'N/A'}</td><td>${r.label}</td></tr>`).join('')}</table>`}
 function reportHtml(c,s){return `<h2>Discernment Center Candidate Assessment Report</h2><div class="reportMeta"><p><strong>Candidate:</strong> ${c.name}<br><strong>Email:</strong> ${c.email}<br><strong>Phone:</strong> ${c.phone}<br><strong>State:</strong> ${STATES[c.state]}<br><strong>Married:</strong> ${c.married}<br><strong>Date:</strong> ${new Date().toLocaleDateString()}</p><div class="overallCard"><span>Overall Readiness</span><strong>${s.overall}</strong><em>${s.overallLabel}</em></div></div>${characterQualityIntro()}${visualScoreChart(s.results)}${characterQualityDefinitions(s.results)}`}
+
+
+function safeFileName(value){
+ return String(value||'discernment-report').trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,80)||'discernment-report';
+}
+function downloadReport(){
+ const report=document.getElementById('report');
+ if(!report||!window.currentReport){return}
+ const candidate=window.currentReport.candidate||{};
+ const fileName=`${safeFileName(candidate.name)}-discernment-report.html`;
+ const reportClone=report.cloneNode(true);
+ const actions=reportClone.querySelectorAll('.actions,.sendStatus');
+ actions.forEach(el=>el.remove());
+ const styles=Array.from(document.querySelectorAll('style,link[rel="stylesheet"]')).map(el=>el.outerHTML).join('\n');
+ const html=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Discernment Center Report</title>${styles}</head><body><main>${reportClone.outerHTML}</main></body></html>`;
+ const blob=new Blob([html],{type:'text/html;charset=utf-8'});
+ const url=URL.createObjectURL(blob);
+ const a=document.createElement('a');
+ a.href=url;
+ a.download=fileName;
+ document.body.appendChild(a);
+ a.click();
+ a.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),500);
+}
 
 async function sendReport(){
  const status=document.getElementById('sendStatus');

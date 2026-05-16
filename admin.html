@@ -10,7 +10,7 @@
   <main>
     <section class="hero adminHero">
       <h1>Discernment Center Admin Dashboard</h1>
-      <p>View stored candidate assessment submissions, open reports, and print or save reports as PDFs.</p>
+      <p>View stored candidate assessment submissions, open reports, and download reports.</p>
       <p><a href="index.html">← Back to assessment</a></p>
     </section>
 
@@ -29,10 +29,10 @@
         <h2>Submissions</h2>
         <div class="toolGrid">
           <label>Search
-            <input id="searchInput" placeholder="Candidate name, email, state">
+            <input id="searchInput" placeholder="Candidate name, email, state, region">
           </label>
-          <label>State
-            <select id="stateFilter"><option value="">All states</option></select>
+          <label>Region
+            <select id="regionFilter"><option value="">All regions</option></select>
           </label>
           <label>Sort
             <select id="sortSelect">
@@ -41,6 +41,7 @@
               <option value="highest">Highest overall</option>
               <option value="lowest">Lowest overall</option>
               <option value="name">Name A-Z</option>
+              <option value="region">Region A-Z</option>
             </select>
           </label>
         </div>
