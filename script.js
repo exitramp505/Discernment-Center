@@ -47,10 +47,10 @@ function renderQuestions(){const marriedYes=married.value==='Yes';currentItems=o
   input.checked=true;
   const shell=document.querySelector('.assessmentShell');
   if(shell){shell.classList.add('answeredFlash')}
-  setTimeout(()=>{currentIndex++;renderQuestions();window.scrollTo({top:questions.offsetTop-12,behavior:'smooth'})},300)
+  setTimeout(()=>{currentIndex++;renderQuestions()},300)
  }));
 }
-function prevQuestion(){if(currentIndex>0){currentIndex--;renderQuestions();window.scrollTo({top:questions.offsetTop-12,behavior:'smooth'})}}
+function prevQuestion(){if(currentIndex>0){currentIndex--;renderQuestions()}}
 function showReflectionStep(){const pct=100;const missing=missingItems();
  if(missing.length){currentIndex=currentItems.findIndex(item=>item.name===missing[0].name);renderQuestions();showMessage('One assessment question still needs an answer. I moved you back to it.','warning');return}
  document.getElementById('generateReportBtn').classList.remove('hidden');questions.innerHTML=`<div class="card assessmentShell"><h2>Assessment Complete</h2><div class="progressWrap"><div class="progressMeta"><span>Assessment questions complete</span><span>${pct}% complete</span></div><div class="progressTrack"><div class="progressBar" style="width:100%"></div></div></div><p class="muted">All required assessment questions have been answered. Complete the reflection questions below, then generate the report. Use Previous Question if you need to review your final answer.</p><div class="slideActions"><button type="button" class="secondaryBtn" onclick="prevQuestion()">Previous Question</button></div></div>`;reflectionCard.classList.remove('hidden')}
