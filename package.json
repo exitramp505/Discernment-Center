@@ -5,7 +5,8 @@
   },
   "dependencies": {
     "resend": "latest",
-    "@netlify/blobs": "latest"
+    "@netlify/blobs": "latest",
+    "pdfkit": "latest"
   },
   "devDependencies": {}
 }

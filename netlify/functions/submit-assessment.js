@@ -1,5 +1,6 @@
 const { Resend } = require('resend');
 const { getStore } = require('@netlify/blobs');
+const { buildPdfBuffer, safeFileName, chartColor, STATES } = require('./pdf-generator');
 
 function getAssessmentStore() {
   const name = 'discernment-assessments';
@@ -38,6 +39,9 @@ function qualityHtmlName(name) {
   const safe = escapeHtml(name);
   return KNOCKOUT_QUALITIES.has(name) ? `<strong>${safe}*</strong>` : safe;
 }
+
+
+const STATE_REGIONS={WA:'Pacific',HI:'Pacific',AK:'Pacific',AZ:'Pacific',UT:'Pacific',CA:'Pacific',NV:'Pacific',ID:'Pacific',OR:'Pacific',TX:'Central',OK:'Central',AR:'Central',WI:'Central',MN:'Central',IA:'Central',IL:'Central',MO:'Central',KS:'Central',CO:'Mountain Plains',WY:'Mountain Plains',NE:'Mountain Plains',SD:'Mountain Plains',ND:'Mountain Plains',MT:'Mountain Plains',NH:'East',VT:'East',MA:'East',ME:'East',RI:'East',CT:'East',NJ:'East',DE:'East',MD:'East',WV:'East',PA:'East',OH:'East',VA:'East',KY:'East',TN:'East',IN:'East',MI:'East',NY:'East',FL:'South East',GA:'South East',AL:'South East',MS:'South East',LA:'South East',SC:'South East',NC:'South East',PR:'South East'};
 
 const DEFAULT_STATE_LEADERS = {
   OH: 'leader-oh@example.com',
@@ -89,6 +93,8 @@ exports.handler = async (event) => {
     const subject = `Discernment Assessment Report - ${candidate.name}`;
     const html = buildHtmlReport(data, leaderEmail, savedRecord.id);
     const text = buildTextReport(data, leaderEmail, savedRecord.id);
+    const pdfBuffer = await buildPdfBuffer({ ...data, submittedAt: new Date().toISOString(), routedLeader: leaderEmail }, { leaderEmail });
+    const pdfFilename = `${safeFileName(candidate.name)}-discernment-report.pdf`;
 
     const resend = new Resend(apiKey);
     const result = await resend.emails.send({
@@ -97,7 +103,11 @@ exports.handler = async (event) => {
       subject,
       html,
       text,
-      reply_to: adminEmail
+      reply_to: adminEmail,
+      attachments: [{
+        filename: pdfFilename,
+        content: pdfBuffer.toString('base64')
+      }]
     });
 
     if (result.error) {
@@ -211,42 +221,88 @@ function buildHtmlReport(data, leaderEmail, submissionId) {
   const c = data.candidate || {};
   const s = data.scores || {};
   const results = s.results || [];
-  const top = s.top || [];
-  const growth = s.growth || [];
-  const r = data.reflections || {};
+  const stateName = STATES[c.state] || c.state || '';
+  const region = STATE_REGIONS[c.state] || '';
 
-  const rows = results.map(item => `
-    <tr>
-      <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;">${escapeHtml(item.name)}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:center;">${escapeHtml(item.score ?? 'N/A')}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;">${escapeHtml(item.label)}</td>
-    </tr>`).join('');
+  const profileRows = results.map(item => {
+    const score = item.score;
+    const hasScore = !(score === null || score === undefined);
+    const pct = hasScore ? Math.max(0, Math.min(100, ((Number(score) - 1) / 4) * 100)) : 50;
+    const color = hasScore ? chartColor(score) : '#94a3b8';
+    const name = KNOCKOUT_QUALITIES.has(item.name) ? `<strong><em>${escapeHtml(item.name)}*</em></strong>` : `<strong>${escapeHtml(item.name)}</strong>`;
+    return `<tr>
+      <td style="padding:8px 0;border-bottom:1px solid #e5e7eb;width:34%;font-size:13px;color:#172033;">${name}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;width:46%;">
+        <div style="height:8px;background:#eef2f7;border-radius:999px;position:relative;">
+          <div style="position:absolute;left:50%;top:-4px;width:1px;height:16px;background:#6b7280;"></div>
+          ${hasScore ? `<div style="height:8px;border-radius:999px;background:${color};width:${Math.abs(pct-50)}%;margin-left:${Math.min(pct,50)}%;"></div>` : ''}
+        </div>
+      </td>
+      <td style="padding:8px 0;border-bottom:1px solid #e5e7eb;text-align:right;font-size:13px;color:#172033;"><strong>${escapeHtml(score ?? 'N/A')}</strong><br><span style="font-size:11px;color:#5b667a;">${escapeHtml(item.label || '')}</span></td>
+    </tr>`;
+  }).join('');
+
+  const descriptionBlocks = results.map(item => {
+    const isKo = KNOCKOUT_QUALITIES.has(item.name);
+    const score = item.score ?? 'N/A';
+    const label = item.label || 'N/A';
+    const badgeFill = item.score === null || item.score === undefined ? '#f1f5f9' : Number(item.score) < 3 ? '#eef5ff' : Number(item.score) === 3 ? '#f8fafc' : '#edf8f3';
+    return `<div style="border:1px solid #e2e8f0;border-radius:14px;padding:14px;margin:0 0 12px;background:#ffffff;">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">
+        <div>
+          <div style="font-size:15px;font-weight:800;color:#111827;">${isKo ? `<em>${escapeHtml(item.name)}*</em>` : escapeHtml(item.name)}</div>
+          ${isKo ? `<div style="display:inline-block;margin-top:5px;background:#eef7f1;border:1px solid #c9e7d4;color:#246b58;border-radius:999px;padding:3px 8px;font-size:11px;font-weight:700;">Knock-Out Factor</div>` : ''}
+        </div>
+        <div style="min-width:64px;text-align:center;border:1px solid #d8dee9;border-radius:12px;background:${badgeFill};padding:7px 8px;color:#172033;">
+          <div style="font-weight:800;font-size:18px;line-height:18px;">${escapeHtml(score)}</div>
+          <div style="font-size:10px;font-weight:700;color:#5b667a;line-height:12px;">${escapeHtml(label)}</div>
+        </div>
+      </div>
+      <p style="margin:12px 0 0;color:#475569;font-size:13px;line-height:1.55;">${escapeHtml(QUALITY_DEFINITIONS[item.name] || '')}</p>
+    </div>`;
+  }).join('');
 
   return `
-  <div style="font-family:Arial,Helvetica,sans-serif;color:#111827;line-height:1.5;max-width:760px;margin:0 auto;">
-    <h1 style="font-size:24px;margin-bottom:4px;">Discernment Center Candidate Assessment Report</h1>
-    <p style="color:#4b5563;margin-top:0;">Generated ${escapeHtml(new Date().toLocaleString())}</p>
-
-    <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:14px;padding:16px;margin:18px 0;">
-      <p><strong>Submission ID:</strong> ${escapeHtml(submissionId || '')}</p>
-      <p><strong>Candidate:</strong> ${escapeHtml(c.name)}</p>
-      <p><strong>Email:</strong> ${escapeHtml(c.email)}</p>
-      <p><strong>Phone:</strong> ${escapeHtml(c.phone)}</p>
-      <p><strong>State:</strong> ${escapeHtml(c.state)}</p>
-      <p><strong>Married:</strong> ${escapeHtml(c.married)}</p>
-      <p><strong>Routed Regional Leader Email:</strong> ${escapeHtml(leaderEmail)}</p>
+  <div style="font-family:Arial,Helvetica,sans-serif;color:#111827;line-height:1.5;max-width:780px;margin:0 auto;background:#f8fafc;padding:20px;">
+    <div style="background:#ffffff;border:1px solid #dbe3ef;border-radius:20px;padding:28px;margin-bottom:18px;">
+      <h1 style="font-size:28px;line-height:1.15;margin:0 0 8px;color:#172033;">Discernment Center Candidate Assessment Report</h1>
+      <p style="color:#5b667a;margin:0 0 22px;">Confidential assessment summary prepared for Discernment Center review.</p>
+      <table style="width:100%;border-collapse:collapse;"><tr>
+        <td style="vertical-align:top;background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:16px;width:62%;">
+          <div style="font-size:12px;font-weight:800;color:#5b667a;text-transform:uppercase;letter-spacing:.04em;">Candidate</div>
+          <div style="font-size:20px;font-weight:800;color:#172033;margin:5px 0;">${escapeHtml(c.name)}</div>
+          <div style="color:#5b667a;font-size:13px;">${escapeHtml(c.email || '')}${c.phone ? ` &nbsp; | &nbsp; ${escapeHtml(c.phone)}` : ''}</div>
+          <div style="color:#5b667a;font-size:13px;margin-top:4px;">${escapeHtml(stateName)}${region ? ` / ${escapeHtml(region)} Region` : ''}</div>
+        </td>
+        <td style="width:18px;"></td>
+        <td style="vertical-align:middle;background:#eef7f1;border:1px solid #c9e7d4;border-radius:14px;padding:16px;text-align:center;">
+          <div style="font-size:12px;font-weight:800;color:#15945f;">Overall Readiness</div>
+          <div style="font-size:34px;font-weight:900;color:#172033;line-height:1.05;margin-top:6px;">${escapeHtml(s.overall)}</div>
+          <div style="font-size:13px;font-weight:800;color:#5b667a;">${escapeHtml(s.overallLabel)}</div>
+        </td>
+      </tr></table>
     </div>
 
-    <h2 style="font-size:20px;">Overall Readiness</h2>
-    <p style="font-size:18px;"><strong>${escapeHtml(s.overall)} out of 5</strong> — ${escapeHtml(s.overallLabel)}</p>
-
-    <h2 style="font-size:20px;">Character Quality Descriptions</h2>
-    <p style="color:#4b5563;">Knock-out Factor categories appear in bold with an asterisk.</p>
-    <div style="border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">
-      ${results.map(item => `<div style="padding:12px 14px;border-bottom:1px solid #e5e7eb;"><div style="font-weight:700;margin-bottom:4px;">${qualityHtmlName(item.name)}: ${escapeHtml(item.score ?? 'N/A')} — ${escapeHtml(item.label)}</div>${escapeHtml(QUALITY_DEFINITIONS[item.name] || '')}</div>`).join('')}
+    <div style="background:#ffffff;border:1px solid #dbe3ef;border-radius:20px;padding:22px;margin-bottom:18px;">
+      <h2 style="font-size:20px;margin:0 0 8px;color:#172033;">Understanding the Character Qualities</h2>
+      <p style="color:#334155;margin:0 0 10px;">The fifteen character qualities give the Discernment Center team a shared language for discussing readiness, strengths, and growth areas. This is not designed as a pass-or-fail scorecard. A score of <strong>3.0</strong> represents the baseline, meaning the quality is evident at a normal and expected level for this stage of discernment.</p>
+      <p style="color:#334155;margin:0;">Categories marked with an asterisk (*) are knock-out factors and should receive special attention in discernment conversations.</p>
     </div>
 
-    <p style="color:#6b7280;font-size:13px;margin-top:24px;">This report is a discernment tool and should be reviewed alongside interviews, coach observations, and the broader Discernment Center process.</p>
+    <div style="background:#ffffff;border:1px solid #dbe3ef;border-radius:20px;padding:22px;margin-bottom:18px;">
+      <h2 style="font-size:20px;margin:0 0 6px;color:#172033;">Character Quality Score Profile</h2>
+      <p style="color:#5b667a;margin:0 0 12px;font-size:13px;">The center line is the 3.0 baseline. Blue indicates below baseline; green indicates above baseline.</p>
+      <table style="width:100%;border-collapse:collapse;">${profileRows}</table>
+      <p style="font-size:12px;color:#5b667a;margin:12px 0 0;"><strong><em>* Knock-out Factor</em></strong></p>
+    </div>
+
+    <div style="background:#ffffff;border:1px solid #dbe3ef;border-radius:20px;padding:22px;">
+      <h2 style="font-size:20px;margin:0 0 6px;color:#172033;">Character Quality Descriptions</h2>
+      <p style="color:#5b667a;margin:0 0 16px;font-size:13px;">Each description explains what the category is intended to surface in the discernment process.</p>
+      ${descriptionBlocks}
+    </div>
+
+    <p style="color:#6b7280;font-size:12px;margin:18px 0 0;text-align:center;">A polished PDF copy of this report is attached for saving, printing, and review.</p>
   </div>`;
 }
 

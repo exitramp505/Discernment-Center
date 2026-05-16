@@ -125,25 +125,34 @@ function reportHtml(c,s){return `<h2>Discernment Center Candidate Assessment Rep
 function safeFileName(value){
  return String(value||'discernment-report').trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,80)||'discernment-report';
 }
-function downloadReport(){
- const report=document.getElementById('report');
- if(!report||!window.currentReport){return}
- const candidate=window.currentReport.candidate||{};
- const fileName=`${safeFileName(candidate.name)}-discernment-report.html`;
- const reportClone=report.cloneNode(true);
- const actions=reportClone.querySelectorAll('.actions,.sendStatus');
- actions.forEach(el=>el.remove());
- const styles=Array.from(document.querySelectorAll('style,link[rel="stylesheet"]')).map(el=>el.outerHTML).join('\n');
- const html=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Discernment Center Report</title>${styles}</head><body><main>${reportClone.outerHTML}</main></body></html>`;
- const blob=new Blob([html],{type:'text/html;charset=utf-8'});
- const url=URL.createObjectURL(blob);
- const a=document.createElement('a');
- a.href=url;
- a.download=fileName;
- document.body.appendChild(a);
- a.click();
- a.remove();
- setTimeout(()=>URL.revokeObjectURL(url),500);
+async function downloadReport(){
+ const payload=window.currentReport;
+ if(!payload){return}
+ const candidate=payload.candidate||{};
+ const fileName=`${safeFileName(candidate.name)}-discernment-report.pdf`;
+ const btn=event && event.target ? event.target : null;
+ const originalText=btn ? btn.textContent : '';
+ if(btn){btn.disabled=true;btn.textContent='Preparing PDF...'}
+ try{
+  const res=await fetch('/.netlify/functions/report-pdf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  if(!res.ok){
+    const data=await res.json().catch(()=>({}));
+    throw new Error(data.error||'Could not generate the PDF.');
+  }
+  const blob=await res.blob();
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),500);
+ }catch(error){
+  showMessage(error.message||'Could not download the report PDF.','warning');
+ }finally{
+  if(btn){btn.disabled=false;btn.textContent=originalText||'Download Report'}
+ }
 }
 
 async function sendReport(){
