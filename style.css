@@ -98,3 +98,32 @@
 
 /* Ministry Readiness Inventory */
 .isaCompareRow{border:1px solid var(--line,#dbe3ef);border-radius:16px;padding:14px 16px;margin:12px 0;background:#fff;display:grid;grid-template-columns:minmax(180px,240px) 1fr minmax(145px,auto);gap:14px;align-items:center}.isaCompareRow small{color:#5b667a;font-weight:700}.isaBar{height:20px;border-radius:999px;background:#e8edf5;position:relative;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(15,23,42,.06)}.isaBar span{position:absolute;left:0;top:0;bottom:0;border-radius:999px}.isaBar em{position:absolute;right:8px;top:2px;font-size:12px;font-style:normal;font-weight:900;color:#172033}.twoOptions{grid-template-columns:repeat(2,minmax(0,1fr))}@media(max-width:720px){.isaCompareRow{grid-template-columns:1fr}.twoOptions{grid-template-columns:1fr}}
+
+/* Ministry Readiness Inventory assessment flow cleanup */
+.isaAssessmentShell .progressMeta{display:flex;justify-content:space-between;gap:18px;align-items:center;font-weight:900;color:var(--accent);font-size:16px;margin-bottom:10px}
+.isaAssessmentShell .progressTrack{height:14px;border:1px solid var(--line);background:#edf0f6;border-radius:999px;overflow:hidden}
+.isaAssessmentShell .progressBar{height:100%;background:var(--accent);border-radius:999px;transition:width .2s ease}
+.isaQuestionText{display:flex;gap:14px;align-items:flex-start;font-size:24px;line-height:1.35;margin-bottom:22px;color:var(--ink)}
+.isaChoiceList{display:grid;grid-template-columns:1fr;gap:12px;margin-top:18px}
+.isaChoice{display:flex;align-items:center;gap:14px;width:100%;min-height:74px;padding:16px 18px;border:2px solid var(--line);border-radius:16px;background:#fff;color:var(--ink);box-shadow:none;text-align:left;font-size:17px;font-weight:900;cursor:pointer;transition:transform .12s ease,border-color .12s ease,box-shadow .12s ease,background .12s ease}
+.isaChoice:hover{transform:translateY(-1px);border-color:#b8c4dc;background:#fbfcff;box-shadow:0 8px 18px #00000012;color:var(--ink)}
+.isaChoice.selected{border-color:var(--accent)!important;background:#f4f7ff!important;box-shadow:0 10px 22px #263b5e1c!important;color:var(--ink)!important}
+.isaChoice .scaleNum{flex:0 0 auto}
+.isaChoiceList.yesno{grid-template-columns:repeat(2,minmax(0,1fr))}
+.isaChoiceList.yesno .isaChoice{justify-content:flex-start}
+.assessmentCompleteCard{border-color:#dbeee1;background:#f7fbf8}
+@media(max-width:760px){.isaQuestionText{font-size:20px}.isaChoiceList.yesno{grid-template-columns:1fr}.isaChoice{min-height:68px;font-size:16px}.isaAssessmentShell .progressMeta{font-size:15px}}
+
+/* ISA report redesign */
+.isaReportTitle{display:flex;justify-content:space-between;gap:24px;align-items:center;margin-bottom:18px;padding:22px;border-radius:20px;background:#ffffff;border:1px solid #d8e1ef;box-shadow:0 10px 28px rgba(15,23,42,.06)}
+.isaReportTitle h2{margin:0 0 6px;color:#1e88c9;font-size:2rem}
+.isaOverall{min-width:132px;border:3px solid #79b943;border-radius:20px;padding:16px;text-align:center;background:#f8fafc}
+.isaOverall strong{display:block;font-size:2.6rem;line-height:1;color:#111827}.isaOverall span{display:block;font-weight:800;color:#475569;margin-top:6px}
+.isaScoreStrip{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0 22px;padding:14px;background:#f5f7ed;border:1px solid #e5e7d8;border-radius:16px}
+.isaStripItem{display:flex;align-items:center;gap:8px;font-weight:800;color:#111827;font-size:.9rem}.isaStripItem span{width:12px;height:12px;border-radius:999px;display:inline-block}.isaStripItem em{font-style:normal;color:#475569;margin-left:auto}
+.isaReportBlock{background:#fff;border:1px solid #dbe3ef;border-radius:18px;padding:20px;margin:20px 0}.isaReportBlock h3{margin-top:0;color:#1f334f}
+.isaComparisonGrid{display:grid;grid-template-columns:1.05fr repeat(4,1fr);border:1px solid #d1d5db;border-radius:12px;overflow:hidden;background:#fff}.isaGridHeader{background:#3f3f46;color:#fff;font-weight:800;padding:12px 10px;font-size:.82rem}.isaRowLabel{background:#f6f6f6;font-weight:800;color:#334155;padding:14px 10px;border-top:1px solid #e5e7eb}.isaGridCell{padding:11px 10px;border-top:1px solid #e5e7eb;background:#fafafa}
+.isaMiniBar{height:18px;background:#e5e7eb;border-radius:999px;position:relative;overflow:hidden}.isaMiniBar span{display:block;height:100%;border-radius:999px}.isaMiniBar em{position:absolute;right:6px;top:1px;font-style:normal;font-size:.78rem;font-weight:800;color:#111827}
+.isaCategoryCards{display:grid;grid-template-columns:1fr 1fr;gap:14px}.isaCategoryCard{display:grid;grid-template-columns:8px 1fr;gap:14px;border:1px solid #dbe3ef;border-radius:16px;background:#f8fafc;overflow:hidden}.isaCategoryAccent{height:100%}.isaCategoryCard>div:last-child{padding:16px 16px 16px 0}.isaCategoryCard h4{margin:0 0 8px;font-size:1rem;color:#111827}.isaCategoryCard h4 span{display:block;font-size:.82rem;color:#64748b;margin-top:2px}.isaCategoryCard p{margin:0 0 8px;color:#475569;line-height:1.45}.isaCategoryCard small{font-weight:800;color:#64748b}
+.isaDepthTable{width:100%;border-collapse:collapse;font-size:.86rem}.isaDepthTable th{background:#3f3f46;color:#fff;text-align:left;padding:9px}.isaDepthTable td{border:1px solid #d1d5db;padding:8px;vertical-align:top}.isaDepthTable tr:nth-child(even) td{background:#f1f5f9}.isaDepthTable td:first-child,.isaDepthTable td:last-child{width:54px;text-align:center}.isaDepthTable td:nth-child(3){width:110px}
+@media(max-width:800px){.isaReportTitle{display:block}.isaOverall{margin-top:16px}.isaScoreStrip{grid-template-columns:1fr}.isaComparisonGrid{font-size:.78rem;grid-template-columns:1fr}.isaCategoryCards{grid-template-columns:1fr}.isaGridHeader:not(:first-child),.isaGridCell{display:block}.isaRowLabel{margin-top:8px}}
