@@ -6,7 +6,8 @@
   "dependencies": {
     "resend": "latest",
     "@netlify/blobs": "latest",
-    "pdfkit": "latest"
+    "pdfkit": "latest",
+    "@supabase/supabase-js": "^2.49.1"
   },
   "devDependencies": {}
 }

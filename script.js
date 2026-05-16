@@ -45,7 +45,31 @@ function interpretation(s){if(s===null)return'N/A';if(s<2)return'Not Yet Evident
 let currentIndex=0;
 let currentItems=[];
 let answers={};
-function init(){state.innerHTML='<option value="">Select state</option>'+Object.entries(STATES).map(([k,v])=>`<option value="${k}">${v}</option>`).join(''); renderQuestions(); married.addEventListener('change',()=>{answers={};currentIndex=0;renderQuestions()}); assessmentForm.addEventListener('submit',submit)}
+
+async function init(){
+ if(window.dcAuth){
+  window.dcAuth.setupLogout();
+  const user=await window.dcAuth.requireUser();
+  if(!user)return;
+  const profile=await window.dcAuth.getProfile(user.id).catch(()=>null);
+  state.innerHTML='<option value="">Select state</option>'+Object.entries(STATES).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
+  if(profile){
+   assessmentForm.name.value=profile.full_name||'';
+   assessmentForm.email.value=profile.email||user.email||'';
+   assessmentForm.phone.value=profile.phone||'';
+   state.value=profile.state||'';
+   married.value=profile.married||'';
+  } else {
+   assessmentForm.email.value=user.email||'';
+  }
+ } else {
+  state.innerHTML='<option value="">Select state</option>'+Object.entries(STATES).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
+ }
+ renderQuestions();
+ married.addEventListener('change',()=>{answers={};currentIndex=0;renderQuestions()});
+ assessmentForm.addEventListener('submit',submit)
+}
+
 function orderedQuestions(marriedYes){
  const items=[];
  sections.forEach((s,si)=>{if(s[2]&&!marriedYes)return; s[1].forEach((q,qi)=>items.push({si,qi,q,name:`q_${si}_${qi}`}))});
@@ -98,6 +122,7 @@ function submit(e){
  }
  const fd=new FormData(assessmentForm);
  const candidate=Object.fromEntries(fd.entries());
+ candidate.region=(window.dcAuth&&window.dcAuth.regionForState)?window.dcAuth.regionForState(candidate.state):'';
  const scores=calc();
  const html=reportHtml(candidate,scores);
  window.currentReport={candidate,scores,answers,reflections:{}};
@@ -159,7 +184,14 @@ async function sendReport(){
  const status=document.getElementById('sendStatus');
  if(status){status.className='sendStatus pending';status.textContent='Sending and storing report...'}
  try{
-  const res=await fetch('/.netlify/functions/submit-assessment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(window.currentReport)});
+  let token='';
+  if(window.dcAuth){
+    const session=await window.dcAuth.getCurrentSession().catch(()=>null);
+    token=session?.access_token||'';
+  }
+  const headers={'Content-Type':'application/json'};
+  if(token) headers.Authorization=`Bearer ${token}`;
+  const res=await fetch('/.netlify/functions/submit-assessment',{method:'POST',headers,body:JSON.stringify(window.currentReport)});
   const data=await res.json().catch(()=>({}));
   if(res.ok&&data.ok){
    if(status){status.className='sendStatus success';status.textContent='Report emailed and stored successfully.'}

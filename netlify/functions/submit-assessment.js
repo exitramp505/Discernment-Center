@@ -1,5 +1,6 @@
 const { Resend } = require('resend');
 const { getStore } = require('@netlify/blobs');
+const { createClient } = require('@supabase/supabase-js');
 const { buildPdfBuffer, safeFileName, chartColor, STATES } = require('./pdf-generator');
 
 function getAssessmentStore() {
@@ -12,6 +13,24 @@ function getAssessmentStore() {
   }
 
   return getStore(name);
+}
+
+function getSupabaseAdmin() {
+  const url = process.env.SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !serviceKey) return null;
+  return createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
+}
+
+async function getUserFromAuthHeader(event) {
+  const authHeader = event.headers.authorization || event.headers.Authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  if (!token) return null;
+  const admin = getSupabaseAdmin();
+  if (!admin) return null;
+  const { data, error } = await admin.auth.getUser(token);
+  if (error || !data || !data.user) return null;
+  return data.user;
 }
 
 
@@ -59,7 +78,9 @@ exports.handler = async (event) => {
 
   try {
     const data = JSON.parse(event.body || '{}');
+    const user = await getUserFromAuthHeader(event);
     const candidate = data.candidate || {};
+    if (user) { data.userId = user.id; candidate.email = candidate.email || user.email; }
     const scores = data.scores || {};
 
     if (!candidate.name || !candidate.email || !candidate.state || !scores.results) {
@@ -70,7 +91,7 @@ exports.handler = async (event) => {
     const adminEmail = process.env.ADMIN_EMAIL;
     const leaderEmail = stateLeaders[candidate.state] || process.env.DEFAULT_LEADER_EMAIL || adminEmail;
 
-    savedRecord = await saveSubmission(data, leaderEmail);
+    savedRecord = await saveSubmission(data, leaderEmail, data.userId || null);
 
     const apiKey = process.env.RESEND_API_KEY;
     const fromEmail = process.env.FROM_EMAIL;
@@ -148,7 +169,7 @@ exports.handler = async (event) => {
   }
 };
 
-async function saveSubmission(data, leaderEmail) {
+async function saveSubmission(data, leaderEmail, userId) {
   const store = getAssessmentStore();
   const now = new Date();
   const candidate = data.candidate || {};
@@ -156,6 +177,7 @@ async function saveSubmission(data, leaderEmail) {
   const key = `${id}.json`;
   const record = {
     id,
+    key,
     submittedAt: now.toISOString(),
     routedLeader: leaderEmail || '',
     emailSent: false,
@@ -165,7 +187,40 @@ async function saveSubmission(data, leaderEmail) {
     answers: data.answers || {}
   };
   await store.setJSON(key, record);
+  await saveSupabaseSubmission(record, userId);
   return { id, key };
+}
+
+async function saveSupabaseSubmission(record, userId) {
+  const admin = getSupabaseAdmin();
+  if (!admin || !userId) return;
+  const candidate = record.candidate || {};
+  const state = candidate.state || '';
+  const region = STATE_REGIONS[state] || candidate.region || '';
+  await admin.from('candidate_profiles').upsert({
+    id: userId,
+    full_name: candidate.name || '',
+    email: candidate.email || '',
+    phone: candidate.phone || '',
+    state,
+    region,
+    married: candidate.married || '',
+    updated_at: new Date().toISOString()
+  }, { onConflict: 'id' });
+  await admin.from('assessment_results').insert({
+    user_id: userId,
+    candidate,
+    scores: record.scores || {},
+    answers: record.answers || {},
+    state,
+    region,
+    overall: record.scores && record.scores.overall ? Number(record.scores.overall) : null,
+    overall_label: record.scores && record.scores.overallLabel ? record.scores.overallLabel : '',
+    routed_leader: record.routedLeader || '',
+    email_sent: record.emailSent || false,
+    blob_key: record.key || '',
+    legacy_submission_id: record.id || ''
+  });
 }
 
 async function updateEmailStatus(key, updates) {
@@ -174,6 +229,8 @@ async function updateEmailStatus(key, updates) {
     const existing = await store.get(key, { type: 'json' });
     if (!existing) return;
     await store.setJSON(key, { ...existing, ...updates, emailUpdatedAt: new Date().toISOString() });
+    const admin = getSupabaseAdmin();
+    if (admin) { await admin.from('assessment_results').update({ email_sent: Boolean(updates.emailSent), email_error: updates.emailError || null, message_id: updates.messageId || null }).eq('blob_key', key); }
   } catch (_) {
     // Do not fail the user flow if the status update fails.
   }
