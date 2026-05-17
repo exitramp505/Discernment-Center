@@ -15,11 +15,48 @@ const ISA_QUESTIONS=[
 ].map(([id,text,group,type])=>({id,text,group,type}));
 
 let current=0, answers={};
+let isaAutosaveReady=false;
+function isaDraftKey(){
+ const email=(document.querySelector('[name=email]')?.value||'anonymous').trim().toLowerCase();
+ return `discernment_isa_draft_${email}`;
+}
+function saveIsaDraft(){
+ if(!isaAutosaveReady)return;
+ const form=document.getElementById('isaForm');
+ const draft={answers,current,phone:form.phone.value,state:form.state.value,updatedAt:new Date().toISOString()};
+ localStorage.setItem(isaDraftKey(),JSON.stringify(draft));
+ showIsaAutosaveStatus('Progress saved');
+}
+function loadIsaDraft(){
+ try{
+  const raw=localStorage.getItem(isaDraftKey());
+  if(!raw)return;
+  const draft=JSON.parse(raw);
+  if(draft && draft.answers){
+   answers=draft.answers||{};
+   current=Number(draft.current||0);
+   const form=document.getElementById('isaForm');
+   if(!form.phone.value && draft.phone)form.phone.value=draft.phone;
+   if(!form.state.value && draft.state)form.state.value=draft.state;
+  }
+ }catch(_){}
+}
+function clearIsaDraft(){try{localStorage.removeItem(isaDraftKey())}catch(_){}}
+function showIsaAutosaveStatus(text){
+ let el=document.getElementById('isaAutosaveStatus');
+ if(!el){
+  el=document.createElement('p');
+  el.id='isaAutosaveStatus';
+  el.className='muted autoSaveStatus';
+  document.getElementById('isaForm').insertBefore(el,document.getElementById('isaQuestions'));
+ }
+ el.textContent=text;
+}
 function optionsFor(type){return type==='yesno'?YESNO:type==='count'?COUNT:AGREE}
 function valueFor(q,ans){if(q.type==='yesno')return ans==='Yes'?1:0;if(q.type==='count')return {None:0,'1-2':.25,'3-6':.5,'7-15':.75,'16+':1}[ans]??0;return {'Strongly Disagree':0,Disagree:.25,Neutral:.5,Agree:.75,'Strongly Agree':1}[ans]??0}
 function labelFor(p){if(p>=85)return 'Very Strong';if(p>=70)return 'Strong';if(p>=50)return 'Developing';return 'Needs Development'}
 function pct(n){return Math.round(n)}
-function calculate(){const sums={P:0,E:0,M:0,R:0}, counts={P:0,E:0,M:0,R:0}; ISA_QUESTIONS.forEach(q=>{sums[q.group]+=valueFor(q,answers[q.id]);counts[q.group]++}); const cats={}; Object.keys(sums).forEach(k=>cats[k]=pct((sums[k]/counts[k])*100)); const overall=pct((cats.P+cats.E+cats.M+cats.R)/4); return {assessmentType:'isa_readiness',assessmentTitle:'Ministry Readiness Inventory',overall,overallLabel:labelFor(overall),categories:[{key:'P',name:'Church Planting',score:cats.P,benchmark:ISA_BENCHMARKS.P,median:ISA_MEDIANS.P,label:labelFor(cats.P),description:ISA_DESCRIPTIONS.P},{key:'E',name:'Entrepreneurial Leadership',score:cats.E,benchmark:ISA_BENCHMARKS.E,median:ISA_MEDIANS.E,label:labelFor(cats.E),description:ISA_DESCRIPTIONS.E},{key:'M',name:'Ministry Experience',score:cats.M,benchmark:ISA_BENCHMARKS.M,median:ISA_MEDIANS.M,label:labelFor(cats.M),description:ISA_DESCRIPTIONS.M},{key:'R',name:'Relational Evangelism',score:cats.R,benchmark:ISA_BENCHMARKS.R,median:ISA_MEDIANS.R,label:labelFor(cats.R),description:ISA_DESCRIPTIONS.R}]}}
+function calculate(){const sums={P:0,E:0,M:0,R:0}, counts={P:0,E:0,M:0,R:0}; let total=0; ISA_QUESTIONS.forEach(q=>{const v=valueFor(q,answers[q.id]); sums[q.group]+=v; counts[q.group]++; total+=v}); const cats={}; Object.keys(sums).forEach(k=>cats[k]=pct((sums[k]/counts[k])*100)); const overall=pct((total/ISA_QUESTIONS.length)*100); return {assessmentType:'isa_readiness',assessmentTitle:'Ministry Readiness Inventory',overall,overallLabel:labelFor(overall),categories:[{key:'P',name:'Church Planting',score:cats.P,benchmark:ISA_BENCHMARKS.P,median:ISA_MEDIANS.P,label:labelFor(cats.P),description:ISA_DESCRIPTIONS.P},{key:'E',name:'Entrepreneurial Leadership',score:cats.E,benchmark:ISA_BENCHMARKS.E,median:ISA_MEDIANS.E,label:labelFor(cats.E),description:ISA_DESCRIPTIONS.E},{key:'M',name:'Ministry Experience',score:cats.M,benchmark:ISA_BENCHMARKS.M,median:ISA_MEDIANS.M,label:labelFor(cats.M),description:ISA_DESCRIPTIONS.M},{key:'R',name:'Relational Evangelism',score:cats.R,benchmark:ISA_BENCHMARKS.R,median:ISA_MEDIANS.R,label:labelFor(cats.R),description:ISA_DESCRIPTIONS.R}]}}
 function renderQuestion(){
  const container=document.getElementById('isaQuestions');
  const q=ISA_QUESTIONS[current];
@@ -39,15 +76,17 @@ function renderQuestion(){
  </div>`;
  container.querySelectorAll('.isaChoice').forEach(btn=>btn.addEventListener('click',()=>{
    answers[q.id]=btn.dataset.answer;
+   saveIsaDraft();
    btn.classList.add('selected');
    setTimeout(()=>{
      if(current<ISA_QUESTIONS.length-1){current++;renderQuestion()}
-     else{document.getElementById('generateIsaBtn').classList.remove('hidden');container.innerHTML='<div class="card assessmentCompleteCard"><h2>Assessment Complete</h2><p class="muted">All required questions have been answered. Click Generate Results to view and save the report.</p></div>'}
+     else{document.getElementById('generateIsaBtn').classList.remove('hidden');container.innerHTML='<div class="card assessmentCompleteCard"><h2>Assessment Complete</h2><p class="muted">All required questions have been answered. Click Finish Assessment to view and save the report.</p></div>'}
    },90);
  }));
- document.getElementById('prevQuestion')?.addEventListener('click',()=>{if(current>0){current--;renderQuestion()}})
+ document.getElementById('prevQuestion')?.addEventListener('click',()=>{if(current>0){current--;saveIsaDraft();renderQuestion()}})
 }
 function bar(v,color){return `<div class="isaBar"><span style="width:${v}%;background:${color}"></span><em>${v}%</em></div>`}
 function reportHtml(scores){return `<div class="reportHeader"><h2>Ministry Readiness Inventory Report</h2><p>${document.querySelector('[name=name]').value} · ${document.querySelector('[name=state]').value} · ${dcAuth.regionForState(document.querySelector('[name=state]').value)} Region</p><div class="overallCard"><span>Overall Readiness</span><strong>${scores.overall}%</strong><em>${scores.overallLabel}</em></div></div><section class="reportSection"><h3>Readiness Profile</h3><p class="muted">This assessment summarizes practical ministry experience and leadership readiness. Benchmark and median lines are based on the sample ISA report format.</p>${scores.categories.map(c=>`<div class="isaCompareRow"><strong>${c.name}</strong>${bar(c.score,'#2a9d8f')}<small>Benchmark: ${c.benchmark}% · Median: ${c.median}%</small></div>`).join('')}</section><section class="reportSection"><h3>Category Descriptions</h3><div class="qualityGrid">${scores.categories.map(c=>`<article class="qualityCard"><div class="qualityCardTop"><h4>${c.name}</h4><span class="qualityScore scoreAbove">${c.score}% <em>${c.label}</em></span></div><p>${c.description}</p></article>`).join('')}</div></section>`}
-async function init(){dcAuth.setupLogout(); const user=await dcAuth.requireUser(); if(!user)return; const profile=await dcAuth.getProfile(user.id).catch(()=>null); const form=document.getElementById('isaForm'); dcAuth.fillStateSelect(form.state); if(profile){form.name.value=profile.full_name||''; form.email.value=profile.email||user.email||''; form.phone.value=profile.phone||''; form.state.value=profile.state||''} else form.email.value=user.email||''; renderQuestion(); form.addEventListener('submit',async e=>{e.preventDefault(); if(Object.keys(answers).length<ISA_QUESTIONS.length){alert('Please complete all questions.');return} const scores=calculate(); const payload={assessmentType:'isa_readiness',candidate:{name:form.name.value,email:form.email.value,phone:form.phone.value,state:form.state.value,region:dcAuth.regionForState(form.state.value)},scores,answers:Object.fromEntries(ISA_QUESTIONS.map(q=>[q.id,{question:q.text,answer:answers[q.id],group:q.group,type:q.type}]))}; const report=document.getElementById('report'); report.classList.remove('hidden'); report.innerHTML=reportHtml(scores)+'<p class="muted">Saving report...</p>'; const session=await dcAuth.getCurrentSession(); const res=await fetch('/.netlify/functions/submit-isa-assessment',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${session.access_token}`},body:JSON.stringify(payload)}); const data=await res.json().catch(()=>({})); if(!res.ok||!data.ok){report.innerHTML+=`<p class="warningText">${data.error||'Could not save report.'}</p>`;return} report.innerHTML=reportHtml(scores)+`<div class="actions"><a class="buttonLink" href="report.html?id=${encodeURIComponent(data.submissionId)}">Open Saved Report</a></div>`; window.scrollTo({top:report.offsetTop-10,behavior:'smooth'});});}
+async function init(){dcAuth.setupLogout(); const user=await dcAuth.requireUser(); if(!user)return; const profile=await dcAuth.getProfile(user.id).catch(()=>null); const form=document.getElementById('isaForm'); dcAuth.fillStateSelect(form.state); if(profile){form.name.value=profile.full_name||''; form.email.value=profile.email||user.email||''; form.phone.value=profile.phone||''; form.state.value=profile.state||''} else form.email.value=user.email||''; loadIsaDraft(); isaAutosaveReady=true; showIsaAutosaveStatus(Object.keys(answers).length ? 'Progress restored and auto-save is on.' : 'Auto-save is on.'); renderQuestion(); form.addEventListener('input',saveIsaDraft); form.addEventListener('change',saveIsaDraft); form.addEventListener('submit',async e=>{e.preventDefault(); if(Object.keys(answers).length<ISA_QUESTIONS.length){alert('Please complete all questions.');return} const scores=calculate();
+ clearIsaDraft(); const payload={assessmentType:'isa_readiness',candidate:{name:form.name.value,email:form.email.value,phone:form.phone.value,state:form.state.value,region:dcAuth.regionForState(form.state.value)},scores,answers:Object.fromEntries(ISA_QUESTIONS.map(q=>[q.id,{question:q.text,answer:answers[q.id],group:q.group,type:q.type}]))}; const report=document.getElementById('report'); report.classList.remove('hidden'); report.innerHTML=reportHtml(scores)+'<p class="muted">Saving report...</p>'; const session=await dcAuth.getCurrentSession(); const res=await fetch('/.netlify/functions/submit-isa-assessment',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${session.access_token}`},body:JSON.stringify(payload)}); const data=await res.json().catch(()=>({})); if(!res.ok||!data.ok){report.innerHTML+=`<p class="warningText">${data.error||'Could not save report.'}</p>`;return} report.innerHTML=reportHtml(scores)+`<div class="actions"><a class="buttonLink" href="report.html?id=${encodeURIComponent(data.submissionId)}">Open Saved Report</a></div>`; window.scrollTo({top:report.offsetTop-10,behavior:'smooth'});});}
 init();

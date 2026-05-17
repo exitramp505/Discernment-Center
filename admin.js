@@ -32,14 +32,14 @@ function regionForState(state){return REGION_BY_STATE[state]||'Unassigned'}
 
 let password='';
 let submissions=[];
+let applications=[];
 
 function initAdmin(){
   regionFilter.innerHTML='<option value="">All regions</option>'+REGION_ORDER.map(region=>`<option value="${region}">${region}</option>`).join('');
   password=sessionStorage.getItem('dc_admin_password')||'';
   if(password){adminPassword.value=password;loadSubmissions();}
   loginBtn.addEventListener('click',()=>{password=adminPassword.value.trim();sessionStorage.setItem('dc_admin_password',password);loadSubmissions();});
-  refreshBtn.addEventListener('click',loadSubmissions);
-  logoutBtn.addEventListener('click',()=>{sessionStorage.removeItem('dc_admin_password');password='';dashboard.classList.add('hidden');loginCard.classList.remove('hidden');adminPassword.value='';});
+  logoutBtn.addEventListener('click',()=>{sessionStorage.removeItem('dc_admin_password');password='';dashboard.classList.add('hidden');loginCard.classList.remove('hidden');logoutBtn.classList.add('hidden');adminPassword.value='';});
   searchInput.addEventListener('input',renderList);
   regionFilter.addEventListener('change',renderList);
   sortSelect.addEventListener('change',renderList);
@@ -57,63 +57,191 @@ async function loadSubmissions(){
   try{
     const data=await adminFetch({});
     submissions=data.submissions||[];
+    applications=data.applications||[];
     loginCard.classList.add('hidden');
     dashboard.classList.remove('hidden');
-    adminReport.classList.add('hidden');
+    logoutBtn.classList.remove('hidden');
     loginMessage.textContent='';
     renderList();
   }catch(err){
     loginMessage.textContent=err.message;
     dashboard.classList.add('hidden');
     loginCard.classList.remove('hidden');
+    logoutBtn.classList.add('hidden');
   }
 }
 
+function assessmentTitle(r){
+  return r.assessmentTitle || (r.assessmentType==='isa_readiness' ? 'Ministry Readiness Inventory' : 'Character Qualities Assessment');
+}
+function candidateKey(r){
+  const email=String(r.email||'').trim().toLowerCase();
+  if(email) return `email:${email}`;
+  return `candidate:${String(r.name||'').trim().toLowerCase()}|${String(r.phone||'').trim()}`;
+}
+function groupCandidates(rows){
+  const map=new Map();
+  for(const r of rows){
+    const key=candidateKey(r);
+    if(!map.has(key)){
+      map.set(key,{key,name:r.name||'Unnamed Candidate',email:r.email||'',phone:r.phone||'',state:r.state||'',married:r.married||'',reports:[]});
+    }
+    const person=map.get(key);
+    person.name=person.name==='Unnamed Candidate' && r.name ? r.name : person.name;
+    person.email=person.email || r.email || '';
+    person.phone=person.phone || r.phone || '';
+    person.state=person.state || r.state || '';
+    person.married=person.married || r.married || '';
+    person.reports.push(r);
+  }
+  return Array.from(map.values()).map(person=>{
+    person.reports.sort((a,b)=>new Date(b.submittedAt||0)-new Date(a.submittedAt||0));
+    person.latestAt=person.reports[0]?.submittedAt || '';
+    person.highestOverall=Math.max(...person.reports.map(r=>Number(r.overall||0)));
+    person.lowestOverall=Math.min(...person.reports.map(r=>Number(r.overall||0)));
+    person.region=regionForState(person.state);
+    return person;
+  });
+}
 function renderList(){
-  let rows=[...submissions];
+  let people=groupCandidates(submissions);
   const q=(searchInput.value||'').toLowerCase().trim();
   const selectedRegion=regionFilter.value;
   if(q){
-    rows=rows.filter(r=>`${r.name} ${r.email} ${r.phone} ${r.state} ${STATES[r.state]||''} ${regionForState(r.state)} ${r.overallLabel}`.toLowerCase().includes(q));
+    people=people.filter(person=>{
+      const reportText=person.reports.map(r=>`${assessmentTitle(r)} ${r.overallLabel} ${r.overall}`).join(' ');
+      return `${person.name} ${person.email} ${person.phone} ${person.state} ${STATES[person.state]||''} ${person.region} ${reportText}`.toLowerCase().includes(q);
+    });
   }
-  if(selectedRegion) rows=rows.filter(r=>regionForState(r.state)===selectedRegion);
+  if(selectedRegion) people=people.filter(person=>person.region===selectedRegion);
   const sort=sortSelect.value;
-  rows.sort((a,b)=>{
-    if(sort==='oldest') return new Date(a.submittedAt||0)-new Date(b.submittedAt||0);
-    if(sort==='highest') return Number(b.overall||0)-Number(a.overall||0);
-    if(sort==='lowest') return Number(a.overall||0)-Number(b.overall||0);
+  people.sort((a,b)=>{
+    if(sort==='oldest') return new Date(a.latestAt||0)-new Date(b.latestAt||0);
+    if(sort==='highest') return Number(b.highestOverall||0)-Number(a.highestOverall||0);
+    if(sort==='lowest') return Number(a.lowestOverall||0)-Number(b.lowestOverall||0);
     if(sort==='name') return String(a.name||'').localeCompare(String(b.name||''));
-    if(sort==='region') return regionForState(a.state).localeCompare(regionForState(b.state)) || String(a.name||'').localeCompare(String(b.name||''));
-    return new Date(b.submittedAt||0)-new Date(a.submittedAt||0);
+    if(sort==='region') return String(a.region||'').localeCompare(String(b.region||'')) || String(a.name||'').localeCompare(String(b.name||''));
+    return new Date(b.latestAt||0)-new Date(a.latestAt||0);
   });
-  countLine.textContent=`Showing ${rows.length} of ${submissions.length} stored submission${submissions.length===1?'':'s'}.`;
-  if(!rows.length){submissionsList.innerHTML='<div class="card"><p class="muted">No submissions found.</p></div>';return;}
-  submissionsList.innerHTML=rows.map(r=>card(r)).join('');
+  const reportCount=submissions.length;
+  const candidateTotal=groupCandidates(submissions).length;
+  if (typeof candidateCountStat !== 'undefined') candidateCountStat.textContent=String(candidateTotal);
+  if (typeof completedItemCountStat !== 'undefined') completedItemCountStat.textContent=String(reportCount);
+  countLine.textContent=`Showing ${people.length} candidate file${people.length===1?'':'s'}`;
+  if(!people.length){submissionsList.innerHTML='<div class="card"><p class="muted">No candidates found.</p></div>';return;}
+  submissionsList.innerHTML=people.map(personCard).join('');
   document.querySelectorAll('[data-open-report]').forEach(btn=>btn.addEventListener('click',()=>openReport(btn.dataset.openReport)));
 }
 
-function card(r){
-  const date=r.submittedAt?new Date(r.submittedAt).toLocaleString():'Unknown date';
-  const top=(r.top||[]).map(x=>x.name).join(', ')||'None listed';
-  const growth=(r.growth||[]).map(x=>x.name).join(', ')||'None listed';
-  const region=regionForState(r.state);
-  return `<div class="card submissionCard">
-    <div class="submissionTop">
-      <div>
-        <h3>${esc(r.name||'Unnamed Candidate')}</h3><p class="muted"><strong>${esc(r.assessmentTitle || (r.assessmentType==='isa_readiness'?'Ministry Readiness Inventory':'Character Qualities Assessment'))}</strong></p>
-        <p class="muted">${esc(date)} · ${esc(STATES[r.state]||r.state||'No state')} · ${esc(region)} Region</p>
+function initialsFor(name){
+  return String(name||'Candidate').trim().split(/\s+/).slice(0,2).map(x=>x[0]||'').join('').toUpperCase() || 'C';
+}
+function formatDate(value){
+  if(!value) return '—';
+  const d=new Date(value);
+  if(Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
+}
+function latestDate(person){return person.latestAt?formatDate(person.latestAt):'—'}
+function itemStatusPill(person){
+  const count=person.reports.length;
+  return `<span class="adminPill complete">${count} Assessment${count===1?'':'s'} Complete</span>`;
+}
+function applicationStatus(person){
+  // Application records will plug in here when the application module is built.
+  return {status:'Not Started', complete:'—', date:'—', tone:'neutral', action:'View Candidate'};
+}
+function uploadStatus(person){
+  // Upload records will plug in here when Supabase Storage is added for photo/resume.
+  return {photo:'Missing', resume:'Missing'};
+}
+function personCard(person){
+  const region=person.region || regionForState(person.state);
+  const app=applicationStatus(person);
+  const uploads=uploadStatus(person);
+  return `<article class="adminCandidateCard">
+    <div class="adminCandidateHead">
+      <div class="adminCandidateIdentity">
+        <div class="adminAvatar">${esc(initialsFor(person.name))}</div>
+        <div>
+          <div class="adminNameRow">
+            <h3>${esc(person.name||'Unnamed Candidate')}</h3>
+            <span class="adminPill region">${esc(region)} Region</span>
+          </div>
+          <div class="adminMeta">
+            <span>${esc(STATES[person.state]||person.state||'No state')}</span>
+            <span>${esc(person.email||'No email')}</span>
+            <span>${esc(person.phone||'No phone')}</span>
+            <span>Last activity: ${esc(latestDate(person))}</span>
+          </div>
+        </div>
       </div>
-      <div class="scoreBadge"><strong>${esc(r.overall||'')}${r.assessmentType==='isa_readiness'?'%':''}</strong><span>${esc(r.overallLabel||'')}</span></div>
+      <div class="adminHeadStatus">
+        <span class="adminPill pending">Application ${esc(app.status)}</span>
+        ${itemStatusPill(person)}
+      </div>
     </div>
-    <div class="submissionMeta">
-      <span>${esc(r.email||'')}</span>
-      <span>${esc(r.phone||'')}</span>
-      <span>Region: ${esc(region)}</span>
-      <span>Married: ${esc(r.married||'')}</span>
-      <span>Email: ${r.emailSent?'Sent':'Not sent'}</span>
+
+    <div class="adminCandidateFile">
+      <section class="adminFileSection">
+        <div class="adminFileHead"><strong>Assessments</strong><span>${person.reports.length} completed</span></div>
+        ${person.reports.map(reportRow).join('') || emptyAdminRow('No assessments completed yet.')}
+      </section>
+
+      <section class="adminFileSection">
+        <div class="adminFileHead"><strong>Forms</strong><span>Application module next</span></div>
+        <div class="adminItemRow">
+          <div>
+            <div class="adminItemName">Discernment Center Application</div>
+            <div class="adminItemDesc">Personal, family, faith, ministry, financial, vision, waiver, and conviction responses.</div>
+          </div>
+          <div class="adminMetric ${app.tone==='submitted'?'green':app.tone==='draft'?'gold':''}"><div class="num">${esc(app.status)}</div><div class="cap">Status</div></div>
+          <div class="adminMetric"><div class="num">${esc(app.complete)}</div><div class="cap">Complete</div></div>
+          <div class="adminMetric"><div class="num">${esc(app.date)}</div><div class="cap">Updated</div></div>
+          <button type="button" class="adminOpen secondary" disabled>${esc(app.action)}</button>
+        </div>
+      </section>
+
+      <section class="adminFileSection">
+        <div class="adminFileHead"><strong>Uploads</strong><span>Photo and resume</span></div>
+        <div class="adminUploadGrid">
+          ${uploadItem('Candidate Photo', uploads.photo)}
+          ${uploadItem('Resume', uploads.resume)}
+        </div>
+      </section>
     </div>
-    ${r.emailError?`<p class="warningText"><strong>Email Error:</strong> ${esc(r.emailError)}</p>`:''}
-    <button type="button" data-open-report="${esc(r.id)}">Open Full Report</button>
+  </article>`;
+}
+function emptyAdminRow(message){return `<div class="adminEmptyRow">${esc(message)}</div>`}
+function uploadItem(title,status){
+  const uploaded=status && status!=='Missing';
+  return `<div class="adminUploadItem">
+    <div>
+      <div class="adminUploadTitle">${esc(title)}</div>
+      <div class="adminUploadMeta">${uploaded?esc(status):'Not uploaded'}</div>
+    </div>
+    <div class="adminMiniActions">
+      <button type="button" class="adminTiny" disabled>${uploaded?'View':'Missing'}</button>
+      ${uploaded?'<button type="button" class="adminTiny dark">Download</button>':''}
+    </div>
+  </div>`;
+}
+function reportRow(r){
+  const date=r.submittedAt?formatDate(r.submittedAt):'—';
+  const isIsa=r.assessmentType==='isa_readiness';
+  const score=`${esc(r.overall||'')}${isIsa?'%':''}`;
+  const label=esc(r.overallLabel||'');
+  const scoreClass=isIsa ? (Number(r.overall)>=70?'green':Number(r.overall)>=50?'blue':'blue') : (Number(r.overall)>=3?'green':'blue');
+  return `<div class="adminItemRow">
+    <div>
+      <div class="adminItemName">${esc(assessmentTitle(r))}</div>
+      <div class="adminItemDesc">${isIsa?'Church planting, entrepreneurial leadership, ministry experience, and relational evangelism.':'15 character qualities with baseline profile and knockout indicators.'}</div>
+      ${r.emailError?`<small class="warningText"><strong>Email Error:</strong> ${esc(r.emailError)}</small>`:''}
+    </div>
+    <div class="adminMetric ${scoreClass}"><div class="num">${score}</div><div class="cap">Overall</div></div>
+    <div class="adminMetric"><div class="num">${label||'—'}</div><div class="cap">Rating</div></div>
+    <div class="adminMetric"><div class="num">${esc(date)}</div><div class="cap">Submitted</div></div>
+    <button type="button" class="adminOpen" data-open-report="${esc(r.id)}">Open Report</button>
   </div>`;
 }
 
@@ -121,34 +249,385 @@ function card(r){
 function safeFileName(value){
  return String(value||'discernment-report').trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,80)||'discernment-report';
 }
-async function downloadReport(){
- const payload=window.currentAdminReport;
- if(!payload){return}
- const candidate=payload.candidate||{};
- const isIsa=(payload.scores||{}).assessmentType==='isa_readiness'; const fileName=`${safeFileName(candidate.name)}-${isIsa?'ministry-readiness':'discernment'}-report.pdf`;
- const btn=event && event.target ? event.target : null;
- const originalText=btn ? btn.textContent : '';
- if(btn){btn.disabled=true;btn.textContent='Preparing PDF...'}
- try{
-  const res=await fetch(isIsa?'/.netlify/functions/report-isa-pdf':'/.netlify/functions/report-pdf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-  if(!res.ok){
-    const data=await res.json().catch(()=>({}));
-    throw new Error(data.error||'Could not generate the PDF.');
+
+function characterPrintReportHtml(record){
+  const c = record.candidate || {};
+  const s = record.scores || {};
+  const results = s.results || [];
+  const stateLabel = STATES[c.state] || c.state || '';
+  const regionLabel = regionForState(c.state) || record.region || c.region || '';
+  const contactLine = [c.email, c.phone, [stateLabel, regionLabel ? `${regionLabel} Region` : null].filter(Boolean).join(' / ')].filter(Boolean).join(' · ');
+
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${esc((c.name || 'Candidate') + ' - Character Qualities Assessment')}</title>
+  <style>
+    @page { size: Letter; margin: 0.45in; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #fff;
+      color: #1f2933;
+      font-family: Inter, Arial, Helvetica, sans-serif;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    body { font-size: 10px; line-height: 1.35; }
+    .hero {
+      border: 1px solid #d9e2ec;
+      border-radius: 22px;
+      padding: 22px;
+      display: grid;
+      grid-template-columns: 1fr 100px;
+      gap: 22px;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    .eyebrow {
+      font-size: 9px;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: #64748b;
+      font-weight: 850;
+      margin-bottom: 5px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      color: #1e88c9;
+      font-size: 25px;
+      line-height: 1.08;
+      letter-spacing: -.035em;
+    }
+    .muted { color: #64748b; }
+    .scoreBadge {
+      border: 3px solid #9bbf2f;
+      border-radius: 22px;
+      min-height: 82px;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      background: #fffdf5;
+      padding: 10px;
+    }
+    .scoreBadge strong { display:block; font-size: 30px; line-height: 1; color: #0f172a; }
+    .scoreBadge span { display:block; margin-top: 5px; font-size: 10px; font-weight: 850; color: #52617a; }
+
+    .section {
+      border: 1px solid #d9e2ec;
+      border-radius: 18px;
+      padding: 16px;
+      margin-bottom: 14px;
+      page-break-inside: auto;
+      break-inside: auto;
+    }
+    h2 {
+      margin: 0 0 8px;
+      font-size: 17px;
+      line-height: 1.1;
+      color: #1f2933;
+    }
+    p { margin: 0 0 8px; color: #52617a; }
+
+    .profileTable {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid #d9e2ec;
+      border-radius: 12px;
+      overflow: hidden;
+      font-size: 8.4px;
+    }
+    .profileTable th {
+      background: #0f172a;
+      color: #fff;
+      text-align: left;
+      padding: 7px;
+      font-size: 8px;
+    }
+    .profileTable td {
+      border-top: 1px solid #e7edf5;
+      padding: 7px;
+      vertical-align: middle;
+    }
+    .profileTable tr:nth-child(even) td { background: #f8fafc; }
+    .profileName { font-weight: 850; }
+    .scoreCell { width: 90px; font-weight: 850; text-align: center; }
+    .labelCell { width: 120px; color: #52617a; font-weight: 750; }
+    .baselineCell { width: 160px; }
+    .track {
+      height: 8px;
+      background: linear-gradient(90deg,#eef3ff 0%,#eef3ff 49%,#475569 49%,#475569 51%,#eefbf4 51%,#eefbf4 100%);
+      border-radius: 999px;
+      position: relative;
+    }
+    .dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      position: absolute;
+      top: -1.5px;
+      transform: translateX(-50%);
+      box-shadow: 0 0 0 2px white;
+    }
+
+    .qualityList {
+      display: block;
+    }
+    .qualityItem {
+      border: 1px solid #d9e2ec;
+      border-radius: 14px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+      page-break-inside: avoid;
+      break-inside: avoid;
+      background: #fff;
+    }
+    .qualityItem.knockout {
+      border-color: #f3d7a8;
+      background: #fffdf9;
+    }
+    .qualityTop {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 14px;
+      align-items: start;
+      margin-bottom: 8px;
+    }
+    h3 {
+      margin: 0;
+      font-size: 12.5px;
+      line-height: 1.15;
+      color: #1f2933;
+    }
+    .qualityScore {
+      min-width: 78px;
+      border: 1px solid #bee8cf;
+      border-radius: 11px;
+      background: #e7f6ee;
+      text-align: center;
+      padding: 7px 8px;
+      font-weight: 850;
+      color: #16834a;
+    }
+    .qualityScore.low {
+      border-color: #cfe1fa;
+      background: #e8f1fb;
+      color: #1e40af;
+    }
+    .qualityScore em {
+      display: block;
+      margin-top: 2px;
+      font-style: normal;
+      font-size: 7.2px;
+      color: #52617a;
+      line-height: 1.1;
+    }
+    .badge {
+      display: inline-block;
+      margin-top: 5px;
+      border-radius: 999px;
+      background: #fff6dc;
+      color: #9a5511;
+      font-size: 7px;
+      font-weight: 900;
+      padding: 4px 7px;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+    .qualityItem p {
+      margin: 0;
+      font-size: 9.5px;
+      line-height: 1.38;
+      color: #52617a;
+    }
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <div>
+      <div class="eyebrow">Discernment Center</div>
+      <h1>${esc(c.name || 'Candidate')} Character Qualities Assessment</h1>
+      <div class="muted">${esc(contactLine)}</div>
+    </div>
+    <div class="scoreBadge">
+      <div>
+        <strong>${esc(s.overall || '')}</strong>
+        <span>${esc(s.overallLabel || '')}</span>
+      </div>
+    </div>
+  </div>
+
+  <section class="section">
+    <h2>Understanding the Character Qualities</h2>
+    <p>The fifteen character qualities are not meant to function like a pass or fail test. They give the Discernment Center team a shared language for discussing a candidate's readiness, strengths, and growth areas.</p>
+    <p>A score of <strong>3.0</strong> is the baseline, meaning the quality is evident at a normal and expected level for this stage of discernment. Scores below 3.0 may point to growth areas. Scores above 3.0 may point to relative strengths.</p>
+  </section>
+
+  <section class="section">
+    <h2>Character Quality Score Profile</h2>
+    <table class="profileTable">
+      <thead>
+        <tr>
+          <th>Character Quality</th>
+          <th>Score</th>
+          <th>Interpretation</th>
+          <th>Baseline View</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${results.map(x => {
+          const score = x.score === null || x.score === undefined ? null : Number(x.score);
+          const pos = score === null ? 50 : Math.max(0, Math.min(100, ((score - 1) / 4) * 100));
+          const color = score === null ? '#94a3b8' : score < 3 ? '#2d6cdf' : '#2a9d8f';
+          return `<tr>
+            <td class="profileName">${qualityNameHtml(x.name)}</td>
+            <td class="scoreCell">${esc(x.score ?? 'N/A')}</td>
+            <td class="labelCell">${esc(x.label || '')}</td>
+            <td class="baselineCell"><div class="track"><span class="dot" style="left:${pos}%;background:${color}"></span></div></td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="section">
+    <h2>Character Quality Descriptions</h2>
+    <p>Use these descriptions as a quick guide for interpreting what each category is looking for. Knock-out Factor categories are marked with a badge.</p>
+    <div class="qualityList">
+      ${SECTION_NAMES.map(name => {
+        const x = results.find(r => r.name === name) || {};
+        const score = x.score === null || x.score === undefined ? null : Number(x.score);
+        const isKnockout = KNOCKOUT_QUALITIES.has(name);
+        const low = score !== null && score < 3;
+        return `<article class="qualityItem ${isKnockout ? 'knockout' : ''}">
+          <div class="qualityTop">
+            <div>
+              <h3>${qualityNameHtml(name)}</h3>
+              ${isKnockout ? '<span class="badge">Knock-out Factor</span>' : ''}
+            </div>
+            <div class="qualityScore ${low ? 'low' : ''}">
+              ${esc(x.score ?? 'N/A')}
+              <em>${esc(x.label || '')}</em>
+            </div>
+          </div>
+          <p>${esc(QUALITY_DEFINITIONS[name] || '')}</p>
+        </article>`;
+      }).join('')}
+    </div>
+  </section>
+</body>
+</html>`;
+}
+
+
+function printCurrentReport(){
+  const payload = window.currentAdminReport;
+  if (!payload) return;
+
+  const isIsa = (payload.scores || {}).assessmentType === 'isa_readiness';
+  const candidateName = (payload.candidate?.name || 'Candidate').trim();
+  const reportTitle = isIsa ? 'Ministry Readiness Inventory Report' : 'Character Qualities Assessment';
+  const title = `${candidateName} - ${reportTitle}`;
+  const safeTitle = title.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+
+  const report = document.getElementById('adminReport');
+  if (!report || report.classList.contains('hidden')) return;
+
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) {
+    alert('The print window was blocked. Please allow pop-ups for this site and try again.');
+    return;
   }
-  const blob=await res.blob();
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url;
-  a.download=fileName;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(()=>URL.revokeObjectURL(url),500);
- }catch(error){
-  alert(error.message||'Could not download the report PDF.');
- }finally{
-  if(btn){btn.disabled=false;btn.textContent=originalText||'Download Report'}
- }
+
+  const html = isIsa ? `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${safeTitle}</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    @page { size: Letter; margin: 0.45in; }
+    html, body { background:#fff!important; color:#1f2933!important; -webkit-print-color-adjust:exact!important; print-color-adjust:exact!important; }
+    body { margin:0; padding:0; font-family:Inter,Arial,Helvetica,sans-serif; }
+    main { width:100%; max-width:none; margin:0; padding:0; }
+    .actions,.reportPrintActions,button,.noPrint { display:none!important; }
+    .isaReport,.isaReportV44 { display:block!important; width:100%!important; max-width:none!important; margin:0!important; padding:0!important; background:#fff!important; overflow:visible!important; }
+    .reportSection,.isaReportTitle,.isaReportHeroV44,.isaScoreStripV44 { box-shadow:none!important; border:1px solid #d9e2ec!important; break-inside:avoid; page-break-inside:avoid; }
+    .isaReportHeroV44 { padding:22px!important; margin-bottom:14px!important; }
+    .isaReportHeroV44 h2 { font-size:25px!important; line-height:1.1!important; }
+    .isaOverall { width:96px!important; min-width:96px!important; padding:12px!important; }
+    .isaOverall strong { font-size:30px!important; }
+    .isaScoreStripV44 { grid-template-columns:repeat(4,1fr)!important; gap:8px!important; padding:12px!important; margin-bottom:14px!important; }
+    .isaScoreCard { padding:10px!important; }
+    .isaScoreCard strong { font-size:9px!important; }
+    .isaScoreCard em { font-size:14px!important; }
+    .reportSection { padding:16px!important; margin:0 0 14px!important; border-radius:16px!important; overflow:visible!important; }
+    .reportSection h3,.isaGuideBlock h3,.isaReportBlock h3 { font-size:18px!important; margin-bottom:8px!important; }
+    .isaSectionLead,.isaHowToRead p,.muted { font-size:9.5px!important; line-height:1.35!important; }
+    .isaGuideGrid { grid-template-columns:1fr 1fr!important; gap:10px!important; }
+    .isaGuideCard { padding:12px!important; break-inside:avoid; }
+    .isaGuideCard h4 { font-size:12px!important; }
+    .isaDefinitionList > div { grid-template-columns:92px 1fr!important; gap:8px!important; padding-top:7px!important; }
+    .isaDefinitionList strong,.isaLegendList strong { font-size:8px!important; }
+    .isaDefinitionList p,.isaLegendList p { font-size:7.5px!important; line-height:1.25!important; }
+    .isaLegendList { gap:7px!important; }
+    .isaLegendList > div { padding:9px!important; }
+    .isaInterpretGrid { grid-template-columns:repeat(3,1fr)!important; gap:8px!important; }
+    .isaInterpretCard { padding:10px!important; }
+    .isaInterpretCard strong { font-size:9px!important; }
+    .isaInterpretCard p { font-size:7.5px!important; }
+    .isaReflectionBox { padding:10px!important; font-size:8px!important; }
+    .isaComparisonWrap { overflow:visible!important; }
+    .isaComparisonGrid,.isaComparisonGridV44 { min-width:0!important; width:100%!important; grid-template-columns:105px repeat(4,1fr)!important; font-size:8px!important; }
+    .isaGridHeader { font-size:7px!important; padding:8px!important; }
+    .isaRowLabel { font-size:8px!important; padding:8px!important; }
+    .isaRowLabel span { font-size:5.5px!important; }
+    .isaGridCell { padding:8px!important; }
+    .isaMiniBar { grid-template-columns:1fr 28px!important; gap:5px!important; }
+    .isaMiniBar em { font-size:7px!important; }
+    .isaSuggestionGrid { grid-template-columns:1fr 1fr!important; gap:9px!important; }
+    .isaSuggestionCard { padding:12px!important; break-inside:avoid; }
+    .isaSuggestionCard h4 { font-size:11px!important; }
+    .isaSuggestionCard p { font-size:8px!important; line-height:1.3!important; }
+    .isaTag { font-size:6px!important; padding:4px 7px!important; }
+    .isaCategoryCards { grid-template-columns:1fr 1fr!important; gap:9px!important; }
+    .isaCategoryCard { break-inside:avoid; padding:10px!important; }
+    .isaCategoryCard h4 { font-size:10px!important; }
+    .isaCategoryCard p,.isaCategoryCard small { font-size:7.5px!important; }
+    .isaDepthTable,.isaDepthTableV44 { width:100%!important; font-size:7px!important; border-collapse:collapse!important; break-inside:auto!important; page-break-inside:auto!important; }
+    .isaDepthTable th,.isaDepthTableV44 th { font-size:7px!important; padding:6px!important; }
+    .isaDepthTable td,.isaDepthTableV44 td { padding:5px 6px!important; line-height:1.2!important; }
+    .isaDepthTable tr,.isaDepthTableV44 tr { break-inside:avoid!important; page-break-inside:avoid!important; }
+    .isaDepthTable thead,.isaDepthTableV44 thead { display:table-header-group!important; }
+    .isaDepthTable tbody,.isaDepthTableV44 tbody { display:table-row-group!important; }
+  </style>
+</head>
+<body><main>${report.innerHTML}</main></body>
+</html>` : characterPrintReportHtml(payload);
+
+  printWindow.document.open();
+  printWindow.document.write(html);
+  printWindow.document.close();
+
+  setTimeout(() => {
+    printWindow.focus();
+    printWindow.print();
+  }, 600);
+}
+
+async function downloadReport(){
+ printCurrentReport();
+}
+
+function closeReport(){
+  const adminReport = document.getElementById('adminReport');
+  if (!adminReport) return;
+  adminReport.innerHTML = '';
+  adminReport.classList.add('hidden');
+  window.currentAdminReport = null;
+  window.currentAdminApplication = null;
 }
 
 async function openReport(id){
@@ -157,7 +636,8 @@ async function openReport(id){
   try{
     const data=await adminFetch({id});
     window.currentAdminReport=data.submission;
-    adminReport.innerHTML=reportHtml(data.submission)+`<div class="actions"><button type="button" onclick="downloadReport()">Download Report</button></div>`;
+    const actionLabel='Print / Save as PDF';
+    adminReport.innerHTML=reportHtml(data.submission)+`<div class="actions reportPrintActions"><button type="button" onclick="downloadReport()">${actionLabel}</button><button type="button" class="secondary" onclick="closeReport()">Close Report</button></div>`;
     window.scrollTo({top:adminReport.offsetTop-10,behavior:'smooth'});
   }catch(err){
     adminReport.innerHTML=`<p class="warningText">${esc(err.message)}</p>`;
@@ -172,33 +652,590 @@ function categoryTable(results){return `<table><tr><th>Character Quality</th><th
 
 function scoreColor(v){v=Number(v)||0; if(v>=85)return '#6c9f3f'; if(v>=70)return '#9bbf2f'; if(v>=50)return '#e0b83e'; return '#b44b4b'}
 function barColor(v){v=Number(v)||0; if(v>=70)return '#34d848'; if(v>=50)return '#f3d421'; return '#e21d2f'}
-function isaMiniBar(v){return `<div class="isaMiniBar"><span style="width:${Number(v)||0}%;background:${barColor(v)}"></span><em>${esc(v)}%</em></div>`}
-function isaComparisonTable(categories){return `<section class="reportSection isaReportBlock"><h3>Comparison Chart</h3><div class="isaComparisonGrid"><div class="isaGridHeader">Profiles</div>${categories.map(c=>`<div class="isaGridHeader">${esc(c.name)}</div>`).join('')}<div class="isaRowLabel">Planter</div>${categories.map(c=>`<div class="isaGridCell">${isaMiniBar(c.score)}</div>`).join('')}<div class="isaRowLabel">Benchmark</div>${categories.map(c=>`<div class="isaGridCell">${isaMiniBar(c.benchmark)}</div>`).join('')}<div class="isaRowLabel">Median</div>${categories.map(c=>`<div class="isaGridCell">${isaMiniBar(c.median)}</div>`).join('')}</div></section>`}
-function isaTopStrip(categories){return `<div class="isaScoreStrip">${categories.map(c=>`<div class="isaStripItem"><strong>${esc(c.name)}</strong><span style="background:${barColor(c.score)}"></span><em>${esc(c.score)}%</em></div>`).join('')}</div>`}
-function isaInDepth(answers){const rows=Object.keys(answers||{}).map(k=>({id:Number(k),...(answers[k]||{})})).filter(x=>x.id).sort((a,b)=>a.id-b.id); return `<section class="reportSection isaReportBlock"><h3>ISA in Depth</h3><table class="isaDepthTable"><thead><tr><th>No.</th><th>Question</th><th>Answer</th><th>Group</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.id)}</td><td>${esc(r.question)}</td><td>${esc(r.answer)}</td><td>${esc(r.group)}</td></tr>`).join('')}</tbody></table></section>`}
-function isaReportHtml(record){const c=record.candidate||{}; const s=record.scores||{}; const cats=s.categories||[]; const pct=s.overall||record.overall||0; return `<div class="isaReport"><div class="isaReportTitle"><div><h2>${esc(c.name||'Candidate')} ISA-Style Score</h2><p class="muted">${esc(c.email||'')} · ${esc(c.phone||'')} · ${esc(c.state||'')} / ${esc(c.region||regionForState(c.state)||'')} Region</p></div><div class="isaOverall" style="border-color:${scoreColor(pct)}"><strong>${esc(pct)}%</strong><span>${esc(s.overallLabel||record.overallLabel||'')}</span></div></div>${isaTopStrip(cats)}${isaComparisonTable(cats)}<section class="reportSection isaReportBlock"><h3>Readiness Snapshot</h3><p class="muted">This report summarizes practical ministry readiness across four areas: church planting exposure, entrepreneurial leadership, ministry experience, and relational evangelism. Scores are shown against benchmark and median reference points so reviewers can quickly see where the candidate is above, near, or below the model.</p></section><section class="reportSection isaReportBlock"><h3>Category Interpretation</h3><div class="isaCategoryCards">${cats.map(cat=>`<article class="isaCategoryCard"><div class="isaCategoryAccent" style="background:${barColor(cat.score)}"></div><div><h4>${esc(cat.name)} <span>${esc(cat.score)}% · ${esc(cat.label)}</span></h4><p>${esc(cat.description||'')}</p><small>Benchmark ${esc(cat.benchmark)}% · Median ${esc(cat.median)}%</small></div></article>`).join('')}</div></section>${isaInDepth(record.answers||{})}</div>`}
+
+function firstNameOf(candidate){
+  const full = (candidate && (candidate.name || candidate.full_name || candidate.fullName)) || 'Candidate';
+  return String(full).trim().split(/\s+/)[0] || 'Candidate';
+}
+function isaSoftBar(v){
+  return `<div class="isaMiniBar"><span style="width:${Number(v)||0}%;background:${barColor(v)}"></span><em>${esc(v)}%</em></div>`;
+}
+function isaReferenceBar(v){
+  return `<div class="isaMiniBar isaSoftReferenceBar"><span style="width:${Number(v)||0}%;background:${barColor(v)}"></span><em>${esc(v)}%</em></div>`;
+}
+function isaScoreCard(cat){
+  return `<div class="isaScoreCard">
+    <strong>${esc(cat.name)}</strong>
+    <div class="isaScoreTrack"><span style="width:${Number(cat.score)||0}%;background:${barColor(cat.score)}"></span></div>
+    <em>${esc(cat.score)}%</em>
+  </div>`;
+}
+function isaHowToReadHtml(){
+  return `<section class="reportSection isaReportBlock isaGuideBlock">
+    <h3>How to Read This Report</h3>
+    <p class="isaSectionLead">This report is designed to help reviewers understand a candidate's ministry readiness profile. It does not determine calling, character, or final approval by itself. It gives the Discernment Center team a starting point for better conversation, coaching, and discernment.</p>
+
+    <div class="isaGuideGrid">
+      <div class="isaGuideCard">
+        <h4>What This Report Measures</h4>
+        <div class="isaDefinitionList">
+          <div><strong>Church Planting</strong><p>Experience and exposure related to starting new ministry works, gathering people, building teams, raising support, and helping new ministry efforts take shape.</p></div>
+          <div><strong>Entrepreneurial Leadership</strong><p>Initiative, risk tolerance, problem solving, vision, ownership, resilience, and leading in uncertain or undeveloped environments.</p></div>
+          <div><strong>Ministry Experience</strong><p>Hands-on leadership experience in ministry settings, including teaching, team leadership, group development, supervising others, and building ministry systems.</p></div>
+          <div><strong>Relational Evangelism</strong><p>Intentional engagement with people who do not yet know Jesus, including sharing faith, building relationships, discipling new believers, and helping others engage evangelistically.</p></div>
+        </div>
+      </div>
+
+      <div class="isaGuideCard">
+        <h4>How to Read the Comparison Chart</h4>
+        <div class="isaLegendList">
+          <div><strong>Planter</strong><p>This is the candidate's actual score based on their answers.</p></div>
+          <div><strong>Benchmark</strong><p>This is a target readiness marker. It is not a pass/fail line. It helps show what stronger readiness may look like in each category.</p></div>
+          <div><strong>Median</strong><p>This is the middle reference point from the comparison profile. It helps show whether the candidate is above, near, or below the typical comparison point.</p></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="isaInterpretGrid">
+      <div class="isaInterpretCard green"><strong>Above the Benchmark</strong><p>Likely strength. These areas may point to existing experience, confidence, or gifting that can be leveraged in church multiplication.</p></div>
+      <div class="isaInterpretCard blue"><strong>Near the Benchmark</strong><p>Solid potential with room for further development. These areas may not be concerns, but they are worth discussing.</p></div>
+      <div class="isaInterpretCard gold"><strong>Below the Median</strong><p>Conversation area. A lower score does not automatically disqualify someone, but it should not be ignored.</p></div>
+    </div>
+
+    <div class="isaReflectionBox">
+      <strong>The best way to use this report is to ask:</strong>
+      <ul>
+        <li>What does this confirm?</li>
+        <li>What does this raise questions about?</li>
+        <li>What needs to be developed before or during the candidate's next step?</li>
+      </ul>
+    </div>
+  </section>`;
+}
+function isaComparisonTable(categories, candidate){
+  const first = firstNameOf(candidate);
+  return `<section class="reportSection isaReportBlock">
+    <h3>Comparison Chart</h3>
+    <p class="muted isaReferenceNote"><strong>${esc(first)}'s score</strong> is shown in the Planter row. <strong>Benchmark</strong> and <strong>Median</strong> are static reference lines for comparison, not additional scores for ${esc(first)}.</p>
+    <div class="isaComparisonWrap">
+      <div class="isaComparisonGrid isaComparisonGridV44">
+        <div class="isaGridHeader">Profiles</div>
+        ${categories.map(c=>`<div class="isaGridHeader">${esc(c.name)}</div>`).join('')}
+
+        <div class="isaRowLabel planterRow">Planter <span>Candidate Result</span></div>
+        ${categories.map(c=>`<div class="isaGridCell planterCell">${isaSoftBar(c.score)}</div>`).join('')}
+
+        <div class="isaRowLabel referenceRow">Benchmark <span>Static Reference</span></div>
+        ${categories.map(c=>`<div class="isaGridCell referenceCell">${isaReferenceBar(c.benchmark)}</div>`).join('')}
+
+        <div class="isaRowLabel referenceRow">Median <span>Static Reference</span></div>
+        ${categories.map(c=>`<div class="isaGridCell referenceCell">${isaReferenceBar(c.median)}</div>`).join('')}
+      </div>
+    </div>
+  </section>`;
+}
+function isaCandidateSuggestion(cats, candidate){
+  const first = firstNameOf(candidate);
+  const above = cats.filter(c=>Number(c.score)>=Number(c.benchmark)).map(c=>c.name);
+  const belowMedian = cats.filter(c=>Number(c.score)<Number(c.median)).map(c=>c.name);
+  const belowBenchmark = cats.filter(c=>Number(c.score)<Number(c.benchmark) && Number(c.score)>=Number(c.median)).map(c=>c.name);
+
+  const strengthText = above.length
+    ? `${first} shows stronger scores in ${above.join(' and ')}, suggesting existing experience or readiness that may be leveraged in church multiplication.`
+    : `${first} does not currently score above the benchmark in any category. This does not disqualify the candidate, but it does suggest that readiness should be explored carefully through conversation and coaching.`;
+
+  const conversationText = belowMedian.length
+    ? `${belowMedian.join(' and ')} ${belowMedian.length===1?'is':'are'} below the median. This should become an important conversation area for assessors and coaches.`
+    : `${first} does not have any category below the median. Reviewers should still explore the story behind the scores and look for development needs.`;
+
+  const developmentText = belowBenchmark.length
+    ? `${belowBenchmark.join(' and ')} ${belowBenchmark.length===1?'is':'are'} below the benchmark but at or above the median. This may indicate developing readiness with room for coaching and additional experience.`
+    : `Areas below benchmark are either already noted as conversation areas or ${first} is above benchmark across the remaining categories.`;
+
+  return `<section class="reportSection isaReportBlock">
+    <h3>What ${esc(first)}'s Results Suggest</h3>
+    <p class="isaSectionLead">These observations are not a verdict. They are prompts for discernment conversations with the candidate, spouse, assessors, coaches, and regional leadership.</p>
+    <div class="isaSuggestionGrid">
+      <article class="isaSuggestionCard strength"><span class="isaTag green">Likely Strength</span><h4>${above.length ? esc(above.join(' and ')) : 'No Category Above Benchmark'}</h4><p>${esc(strengthText)}</p></article>
+      <article class="isaSuggestionCard conversation"><span class="isaTag gold">Conversation Area</span><h4>${belowMedian.length ? esc(belowMedian.join(' and ')) : 'No Category Below Median'}</h4><p>${esc(conversationText)}</p></article>
+      <article class="isaSuggestionCard development"><span class="isaTag blue">Development Area</span><h4>${belowBenchmark.length ? esc(belowBenchmark.join(' and ')) : 'Continued Discernment'}</h4><p>${esc(developmentText)}</p></article>
+      <article class="isaSuggestionCard"><span class="isaTag blue">Next Conversation</span><h4>Recommended Follow-Up</h4><p>Reviewers should ask where these scores confirm lived experience, where the candidate may need coaching, and what support would strengthen readiness before or during the next step.</p></article>
+    </div>
+  </section>`;
+}
+function isaInDepth(answers, candidate){
+  const first = firstNameOf(candidate);
+  const rows=Object.keys(answers||{}).map(k=>({id:Number(k),...(answers[k]||{})})).filter(x=>x.id).sort((a,b)=>a.id-b.id);
+  return `<section class="reportSection isaReportBlock">
+    <h3>ISA in Depth</h3>
+    <p class="isaSectionLead">These are ${esc(first)}'s item-by-item answers. They should be used for context when discussing category scores, strengths, and possible development areas.</p>
+    <table class="isaDepthTable isaDepthTableV44">
+      <thead><tr><th>No.</th><th>Question</th><th>Answer</th><th>Group</th></tr></thead>
+      <tbody>${rows.map(r=>`<tr><td>${esc(r.id)}</td><td>${esc(r.question)}</td><td>${esc(r.answer)}</td><td>${esc(r.group)}</td></tr>`).join('')}</tbody>
+    </table>
+  </section>`;
+}
 
 function reportHtml(record){
   if ((record.scores||{}).assessmentType === 'isa_readiness') return isaReportHtml(record);
   const c=record.candidate||{};
   const s=record.scores||{};
-  const r=record.reflections||{};
-  return `<h2>Discernment Center Candidate Assessment Report</h2>
-  <div class="reportMeta"><p><strong>Submission ID:</strong> ${esc(record.id||'')}<br>
-  <strong>Submitted:</strong> ${esc(record.submittedAt?new Date(record.submittedAt).toLocaleString():'')}<br>
-  <strong>Candidate:</strong> ${esc(c.name||'')}<br>
-  <strong>Email:</strong> ${esc(c.email||'')}<br>
-  <strong>Phone:</strong> ${esc(c.phone||'')}<br>
-  <strong>State:</strong> ${esc(STATES[c.state]||c.state||'')}<br>
-  <strong>Region:</strong> ${esc(regionForState(c.state))} Region<br>
-  <strong>Married:</strong> ${esc(c.married||'')}<br>
-  <strong>Routed Leader:</strong> ${esc(record.routedLeader||'')}<br>
-  <strong>Email Status:</strong> ${record.emailSent?'Sent':'Not sent'}</p><div class="overallCard"><span>Overall Readiness</span><strong>${esc(s.overall||'')}</strong><em>${esc(s.overallLabel||'')}</em></div></div>
-  ${characterQualityIntro()}
-  ${visualScoreChart(s.results||[])}
-  ${characterQualityDefinitions(s.results||[])}`;
+  const stateLabel=STATES[c.state]||c.state||'';
+  const regionLabel=regionForState(c.state)||record.region||c.region||'';
+  const contactLine=[c.email,c.phone,[stateLabel,regionLabel?`${regionLabel} Region`:null].filter(Boolean).join(' / ')].filter(Boolean).join(' · ');
+  return `<div class="characterReportV48">
+    <div class="characterReportHeroV48">
+      <div>
+        <div class="eyebrow">Discernment Center</div>
+        <h2>${esc(c.name||'Candidate')} Candidate Assessment Report</h2>
+        <p class="muted">${esc(contactLine)}</p>
+      </div>
+      <div class="characterOverallV48">
+        <strong>${esc(s.overall||'')}</strong>
+        <span>${esc(s.overallLabel||'')}</span>
+      </div>
+    </div>
+
+    ${characterQualityIntro()}
+    ${visualScoreChart(s.results||[])}
+    ${characterQualityDefinitions(s.results||[])}
+  </div>`;
 }
 
 function esc(value){return String(value??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));}
 
+
+// Application-aware admin dashboard overrides
+function candidateKeyFromParts(email, userId, name, phone){
+  if(userId) return `user:${userId}`;
+  const e=String(email||'').trim().toLowerCase();
+  if(e) return `email:${e}`;
+  return `candidate:${String(name||'').trim().toLowerCase()}|${String(phone||'').trim()}`;
+}
+function groupCandidates(rows){
+  const map=new Map();
+  for(const r of rows){
+    const key=candidateKeyFromParts(r.email, r.userId, r.name, r.phone);
+    if(!map.has(key)){
+      map.set(key,{key,userId:r.userId||'',name:r.name||'Unnamed Candidate',email:r.email||'',phone:r.phone||'',state:r.state||'',married:r.married||'',reports:[],application:null});
+    }
+    const person=map.get(key);
+    person.userId=person.userId || r.userId || '';
+    person.name=person.name==='Unnamed Candidate' && r.name ? r.name : person.name;
+    person.email=person.email || r.email || '';
+    person.phone=person.phone || r.phone || '';
+    person.state=person.state || r.state || '';
+    person.married=person.married || r.married || '';
+    person.reports.push(r);
+  }
+  for(const app of applications){
+    const key=candidateKeyFromParts(app.email, app.userId, app.name, app.phone);
+    if(!map.has(key)){
+      map.set(key,{key,userId:app.userId||'',name:app.name||'Unnamed Candidate',email:app.email||'',phone:app.phone||'',state:app.state||'',married:'',reports:[],application:app});
+    }
+    const person=map.get(key);
+    person.application=app;
+    person.userId=person.userId || app.userId || '';
+    person.name=person.name==='Unnamed Candidate' && app.name ? app.name : person.name;
+    person.email=person.email || app.email || '';
+    person.phone=person.phone || app.phone || '';
+    person.state=person.state || app.state || '';
+  }
+  return Array.from(map.values()).map(person=>{
+    person.reports.sort((a,b)=>new Date(b.submittedAt||0)-new Date(a.submittedAt||0));
+    const dates=[person.reports[0]?.submittedAt, person.application?.updatedAt, person.application?.submittedAt].filter(Boolean);
+    person.latestAt=dates.sort((a,b)=>new Date(b)-new Date(a))[0] || '';
+    const scores=person.reports.map(r=>Number(r.overall||0)).filter(Boolean);
+    person.highestOverall=scores.length?Math.max(...scores):0;
+    person.lowestOverall=scores.length?Math.min(...scores):0;
+    person.region=person.application?.region || regionForState(person.state);
+    return person;
+  });
+}
+function renderList(){
+  let people=groupCandidates(submissions);
+  const q=(searchInput.value||'').toLowerCase().trim();
+  const selectedRegion=regionFilter.value;
+  if(q){
+    people=people.filter(person=>{
+      const reportText=person.reports.map(r=>`${assessmentTitle(r)} ${r.overallLabel} ${r.overall}`).join(' ');
+      const appText=person.application ? `application ${person.application.status} ${person.application.completion}` : '';
+      return `${person.name} ${person.email} ${person.phone} ${person.state} ${STATES[person.state]||''} ${person.region} ${reportText} ${appText}`.toLowerCase().includes(q);
+    });
+  }
+  if(selectedRegion) people=people.filter(person=>person.region===selectedRegion);
+  const sort=sortSelect.value;
+  people.sort((a,b)=>{
+    if(sort==='oldest') return new Date(a.latestAt||0)-new Date(b.latestAt||0);
+    if(sort==='highest') return Number(b.highestOverall||0)-Number(a.highestOverall||0);
+    if(sort==='lowest') return Number(a.lowestOverall||0)-Number(b.lowestOverall||0);
+    if(sort==='name') return String(a.name||'').localeCompare(String(b.name||''));
+    if(sort==='region') return String(a.region||'').localeCompare(String(b.region||'')) || String(a.name||'').localeCompare(String(b.name||''));
+    return new Date(b.latestAt||0)-new Date(a.latestAt||0);
+  });
+  const itemCount=submissions.length + applications.length;
+  const candidateTotal=groupCandidates(submissions).length;
+  if (typeof candidateCountStat !== 'undefined') candidateCountStat.textContent=String(candidateTotal);
+  if (typeof completedItemCountStat !== 'undefined') completedItemCountStat.textContent=String(itemCount);
+  countLine.textContent=`Showing ${people.length} candidate file${people.length===1?'':'s'}`;
+  if(!people.length){submissionsList.innerHTML='<div class="card"><p class="muted">No candidates found.</p></div>';return;}
+  submissionsList.innerHTML=people.map(personCard).join('');
+  document.querySelectorAll('[data-open-report]').forEach(btn=>btn.addEventListener('click',()=>openReport(btn.dataset.openReport)));
+  document.querySelectorAll('[data-open-application]').forEach(btn=>btn.addEventListener('click',()=>openApplication(btn.dataset.openApplication)));
+  document.querySelectorAll('[data-file-kind]').forEach(btn=>btn.addEventListener('click',()=>openApplicationFile(btn.dataset.applicationId, btn.dataset.fileKind)));
+}
+function applicationStatus(person){
+  const app=person.application;
+  if(!app) return {status:'Not Started', complete:'—', date:'—', tone:'neutral', action:'View Candidate'};
+  const submitted=app.status==='submitted';
+  return {status:submitted?'Submitted':'Draft', complete:`${app.completion||0}%`, date:formatDate(app.submittedAt||app.updatedAt), tone:submitted?'submitted':'draft', action:submitted?'Open Application':'View Draft'};
+}
+function uploadStatus(person){
+  const app=person.application||{};
+  return {
+    photo: app.hasPhoto ? (app.photoName || 'Uploaded') : 'Missing',
+    resume: app.hasResume ? (app.resumeName || 'Uploaded') : 'Missing',
+    appId: app.id || ''
+  };
+}
+function personCard(person){
+  const region=person.region || regionForState(person.state);
+  const app=applicationStatus(person);
+  const uploads=uploadStatus(person);
+  const reportCount=person.reports.length;
+  const appDisabled = person.application ? '' : 'disabled';
+  return `<article class="adminCandidateCard">
+    <div class="adminCandidateHead">
+      <div class="adminCandidateIdentity">
+        <div class="adminAvatar">${esc(initialsFor(person.name))}</div>
+        <div>
+          <div class="adminNameRow">
+            <h3>${esc(person.name||'Unnamed Candidate')}</h3>
+            <span class="adminPill region">${esc(region)} Region</span>
+          </div>
+          <div class="adminMeta">
+            <span>${esc(STATES[person.state]||person.state||'No state')}</span>
+            <span>${esc(person.email||'No email')}</span>
+            <span>${esc(person.phone||'No phone')}</span>
+            <span>Last activity: ${esc(latestDate(person))}</span>
+          </div>
+        </div>
+      </div>
+      <div class="adminHeadStatus">
+        <span class="adminPill ${app.tone==='submitted'?'complete':app.tone==='draft'?'pending':'pending'}">Application ${esc(app.status)}</span>
+        <span class="adminPill ${reportCount?'complete':'pending'}">${reportCount} Assessment${reportCount===1?'':'s'} Complete</span>
+      </div>
+    </div>
+
+    <div class="adminCandidateFile">
+      <section class="adminFileSection">
+        <div class="adminFileHead"><strong>Assessments</strong><span>${reportCount} completed</span></div>
+        ${person.reports.map(reportRow).join('') || emptyAdminRow('No assessments completed yet.')}
+      </section>
+
+      <section class="adminFileSection">
+        <div class="adminFileHead"><strong>Forms</strong><span>${person.application ? app.status.toLowerCase() : 'not started'}</span></div>
+        <div class="adminItemRow">
+          <div>
+            <div class="adminItemName">Discernment Center Application</div>
+            <div class="adminItemDesc">Personal, family, faith, ministry, financial, vision, waiver, and conviction responses.</div>
+          </div>
+          <div class="adminMetric ${app.tone==='submitted'?'green':app.tone==='draft'?'gold':''}"><div class="num">${esc(app.status)}</div><div class="cap">Status</div></div>
+          <div class="adminMetric"><div class="num">${esc(app.complete)}</div><div class="cap">Complete</div></div>
+          <div class="adminMetric"><div class="num">${esc(app.date)}</div><div class="cap">Updated</div></div>
+          <button type="button" class="adminOpen ${app.tone==='submitted'?'green':app.tone==='draft'?'gold':'secondary'}" data-open-application="${esc(person.application?.id||'')}" ${appDisabled}>${esc(app.action)}</button>
+        </div>
+      </section>
+
+      <section class="adminFileSection">
+        <div class="adminFileHead"><strong>Uploads</strong><span>Photo and resume</span></div>
+        <div class="adminUploadGrid">
+          ${uploadItem('Candidate Photo', uploads.photo, uploads.appId, 'photo')}
+          ${uploadItem('Resume', uploads.resume, uploads.appId, 'resume')}
+        </div>
+      </section>
+    </div>
+  </article>`;
+}
+function uploadItem(title,status,appId,kind){
+  const uploaded=status && status!=='Missing';
+  return `<div class="adminUploadItem">
+    <div>
+      <div class="adminUploadTitle">${esc(title)}</div>
+      <div class="adminUploadMeta">${uploaded?esc(status):'Not uploaded'}</div>
+    </div>
+    <div class="adminMiniActions">
+      <button type="button" class="adminTiny" ${uploaded?`data-application-id="${esc(appId)}" data-file-kind="${esc(kind)}"`:'disabled'}>${uploaded?'View':'Missing'}</button>
+    </div>
+  </div>`;
+}
+
+function printCurrentApplication(){
+  const app = window.currentAdminApplication;
+  if(!app){return}
+  const a = app.application || {};
+  const candidateName = (app.name || a.fullName || 'Candidate').trim();
+  const title = `${candidateName} - Discernment Center Application`;
+  const safeTitle = title.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+
+  const printWindow = window.open('', '_blank');
+  if(!printWindow){
+    alert('The print window was blocked. Please allow pop-ups for this site and try again.');
+    return;
+  }
+
+  printWindow.document.open();
+  printWindow.document.write(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${safeTitle}</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    @page { size: Letter; margin: 0.45in; }
+    html, body {
+      background:#fff!important;
+      color:#1f2933!important;
+      -webkit-print-color-adjust:exact!important;
+      print-color-adjust:exact!important;
+    }
+    body {
+      margin:0;
+      padding:0;
+      font-family:Inter,Arial,Helvetica,sans-serif;
+    }
+    main {
+      width:100%;
+      max-width:none;
+      margin:0;
+      padding:0;
+    }
+    .actions,.reportPrintActions,button,.noPrint {
+      display:none!important;
+    }
+    .applicationReview,
+    .applicationReviewV52 {
+      display:block!important;
+      width:100%!important;
+      max-width:none!important;
+      margin:0!important;
+      padding:0!important;
+      background:#fff!important;
+      overflow:visible!important;
+    }
+    .applicationHeroV52,
+    .applicationReviewBlock {
+      box-shadow:none!important;
+      border:1px solid #d9e2ec!important;
+      break-inside:avoid;
+      page-break-inside:avoid;
+    }
+    .applicationHeroV52 {
+      padding:22px!important;
+      margin-bottom:14px!important;
+      grid-template-columns:1fr auto!important;
+    }
+    .applicationHeroV52 h2 {
+      font-size:25px!important;
+      line-height:1.1!important;
+    }
+    .applicationStatusV52 {
+      width:96px!important;
+      min-width:96px!important;
+      min-height:80px!important;
+      padding:12px!important;
+    }
+    .applicationStatusV52 strong {
+      font-size:18px!important;
+    }
+    .applicationReviewGrid {
+      grid-template-columns:1fr!important;
+      gap:12px!important;
+    }
+    .applicationReviewBlock {
+      padding:14px!important;
+      margin-bottom:12px!important;
+      border-radius:14px!important;
+      overflow:visible!important;
+      break-inside:avoid;
+      page-break-inside:avoid;
+    }
+    .applicationReviewBlock h3 {
+      font-size:14px!important;
+      margin-bottom:8px!important;
+    }
+    .reviewRow {
+      padding:7px 0!important;
+      break-inside:avoid;
+      page-break-inside:avoid;
+    }
+    .reviewRow strong {
+      font-size:7.5px!important;
+    }
+    .reviewRow p,
+    .reviewRow li {
+      font-size:9.2px!important;
+      line-height:1.35!important;
+    }
+  </style>
+</head>
+<body>
+  <main>${applicationHtml(app)}</main>
+</body>
+</html>`);
+  printWindow.document.close();
+  setTimeout(() => {
+    printWindow.focus();
+    printWindow.print();
+  }, 600);
+}
+
+
+function findApplication(id){ return applications.find(app=>String(app.id)===String(id)); }
+async function openApplication(id){
+  const app=findApplication(id);
+  if(!app){return}
+  adminReport.classList.remove('hidden');
+  adminReport.innerHTML='<p class="muted">Loading application...</p>';
+  window.currentAdminApplication=app;
+
+  if(app.hasPhoto && !app.photoUrl){
+    try{
+      const res=await fetch('/.netlify/functions/application-file',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password, applicationId:app.id, kind:'photo'})});
+      const data=await res.json().catch(()=>({}));
+      if(res.ok && data.ok && data.url){
+        app.photoUrl=data.url;
+      }
+    }catch(_){}
+  }
+
+  adminReport.innerHTML=applicationHtml(app)+`<div class="actions reportPrintActions"><button type="button" onclick="printCurrentApplication()">Print / Save as PDF</button><button type="button" class="secondary" onclick="closeReport()">Close Application</button></div>`;
+  window.scrollTo({top:adminReport.offsetTop-10,behavior:'smooth'});
+}
+function applicationHtml(app){
+  const a=app.application||{};
+  const fullName=app.name||a.fullName||'Candidate';
+  const stateLabel=STATES[a.state]||STATES[app.state]||a.state||app.state||'';
+  const regionLabel=a.region||app.region||regionForState(a.state||app.state)||'';
+  const contactLine=[a.email||app.email,a.phone||app.phone,[stateLabel,regionLabel?`${regionLabel} Region`:null].filter(Boolean).join(' / ')].filter(Boolean).join(' · ');
+  const status=app.status==='submitted'?'Submitted':app.status==='draft'?'Draft':'Application';
+  const submittedDate=app.submittedAt||app.updatedAt||'';
+  const children=(a.children||[]).map(c=>`<li>${esc(c.name||'')} ${esc(c.age||'')} ${esc(c.sex||'')}</li>`).join('') || '<li>None listed</li>';
+  const roles=(a.roles||[]).map(r=>`<li><strong>${esc(r.title||'')}</strong>${r.ministry?` — ${esc(r.ministry)}`:''}${r.years?` (${esc(r.years)})`:''}</li>`).join('') || '<li>None listed</li>';
+  const exp=Array.isArray(a.plantingExperience)?a.plantingExperience.join(', '):'';
+  const address=cleanAddress(a,stateLabel);
+  const debtRows=debtRowsForApplication(a);
+  return `<section class="applicationReview applicationReviewV52">
+    <div class="applicationHeroV52">
+      <div class="applicationHeroIdentityV53">
+        ${app.photoUrl ? `<img class="applicationCandidatePhotoV53" src="${esc(app.photoUrl)}" alt="${esc(fullName)} photo">` : `<div class="applicationPhotoPlaceholderV53">${esc(initialsFor(fullName))}</div>`}
+        <div>
+          <div class="eyebrow">Discernment Center</div>
+          <h2>${esc(fullName)} Application</h2>
+          <p class="muted">${esc(contactLine)}</p>
+        </div>
+      </div>
+      <div class="applicationStatusV52">
+        <strong>${esc(status)}</strong>
+        <span>${submittedDate?esc(formatDate(submittedDate)):esc(app.completion?`${app.completion}% Complete`:'')}</span>
+      </div>
+    </div>
+
+    <div class="applicationReviewGrid">
+      ${reviewBlock('Personal Information', [['Full Name',a.fullName],['Date of Birth',a.birthDate],['Email',a.email],['Phone',a.phone],['Address',address],['Citizenship',a.citizenship],['Marital Status',a.maritalStatus]])}
+      ${reviewBlock('Spouse and Children', [['Spouse Name',a.spouseName],['Spouse Birth Date',a.spouseBirthDate],['Spouse Marital History',a.spouseMaritalHistory],['Children',`<ul>${children}</ul>`]])}
+      ${reviewBlock('Faith and Calling', [['Conversion Story',a.conversionStory],['Call to Ministry',a.callToMinistry]])}
+      ${reviewBlock('Ministry Experience', [['Sponsoring Church',a.sponsoringOrg],['Has Sponsor',a.hasSponsor],['License Status',a.licenseStatus],['Planting Experience',exp],['Recent Ministry Roles',`<ul>${roles}</ul>`]])}
+      ${reviewBlock('Financial Information', [['Last Year Income',a.lastYearIncome],['Average Income',a.averageIncome],['Bankruptcy',a.bankruptcy], ...(debtRows.length ? debtRows : [['Debt Overview','No debt details listed']])])}
+      ${reviewBlock('Church Planting Vision', [['Why Plant',a.whyPlant],['Plant Type',a.plantType],['Target Community',a.targetAudience],['Financial Plan',a.financialPlan],['Plant Timing',a.plantTiming],['Pastor Counsel',a.pastorCounsel],['Pastor Support',a.pastorSupport],['Support Network',a.supportNetwork],['Spouse Involvement',a.spouseInvolvement]])}
+      ${reviewBlock('Statement of Faith and Core Convictions', [['Waiver',a.waiverAgreement?'Agreed':'Not checked'],['Statement of Faith',a.statementOfFaith === 'Yes' ? 'In harmony' : a.statementOfFaith === 'No' ? 'Objected' : a.statementOfFaith || 'Not answered'],['Statement Explanation',a.statementFaithExplanation],['Core Convictions',a.coreConvictions?'Read':'Not checked']])}
+    </div>
+  </section>`;
+}
+function cleanAddress(a,stateLabel){
+  const street = String(a.address || '').trim();
+  const city = String(a.city || '').trim();
+  const zip = String(a.zip || '').trim();
+  const state = String(stateLabel || a.state || '').trim();
+
+  const lowerStreet = street.toLowerCase();
+  const cityAlreadyIncluded = city && lowerStreet.includes(city.toLowerCase());
+  const stateAlreadyIncluded = state && lowerStreet.includes(state.toLowerCase());
+
+  const parts = [street];
+  if(city && !cityAlreadyIncluded) parts.push(city);
+  if(state && !stateAlreadyIncluded) parts.push(state);
+  if(zip) parts.push(zip);
+  return parts.filter(Boolean).join(', ');
+}
+
+function debtSummary(a,key){
+  const type=a[`debt_${key}_type`]||'';
+  const amount=a[`debt_${key}_amount`]||'';
+  const interest=a[`debt_${key}_interest`]||'';
+  const payment=a[`debt_${key}_payment`]||'';
+
+  const hasAmount = amount && String(amount).trim() !== '0' && String(amount).trim() !== '$0';
+  const hasInterest = interest && String(interest).trim() !== '0' && String(interest).trim() !== '0%';
+  const hasPayment = payment && String(payment).trim() !== '0' && String(payment).trim() !== '$0';
+
+  if(!hasAmount && !hasInterest && !hasPayment) return '';
+
+  const parts=[
+    type,
+    hasAmount && `Amount: ${amount}`,
+    hasInterest && `Interest: ${interest}`,
+    hasPayment && `Payment: ${payment}`
+  ].filter(Boolean);
+
+  return parts.join(' · ');
+}
+
+function debtRowsForApplication(a){
+  return [
+    ['School Loans',debtSummary(a,'school')],
+    ['Mortgage',debtSummary(a,'mortgage')],
+    ['Car Loans',debtSummary(a,'car')],
+    ['Credit Card',debtSummary(a,'credit')],
+    ['Other Loans',debtSummary(a,'other')]
+  ].filter(([,value]) => value);
+}
+
+function reviewBlock(title, rows){
+  return `<article class="applicationReviewBlock"><h3>${esc(title)}</h3>${rows.map(([k,v])=>`<div class="reviewRow"><strong>${esc(k)}</strong><p>${String(v||'').startsWith('<')?v:esc(v||'—')}</p></div>`).join('')}</article>`;
+}
+async function openApplicationFile(applicationId, kind){
+  try{
+    const res=await fetch('/.netlify/functions/application-file',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password, applicationId, kind})});
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok||!data.ok) throw new Error(data.error||'Could not open file.');
+    window.open(data.url, '_blank');
+  }catch(err){
+    alert(err.message||'Could not open file.');
+  }
+}
+
 initAdmin();
+function isaReportHtml(record){
+  const c=record.candidate||{};
+  const s=record.scores||{};
+  const cats=s.categories||[];
+  const pct=s.overall||record.overall||0;
+  return `<div class="isaReport isaReportV44">
+    <div class="isaReportTitle isaReportHeroV44">
+      <div>
+        <div class="eyebrow">Ministry Readiness Inventory</div>
+        <h2>${esc(c.name||'Candidate')} ISA-Style Score</h2>
+        <p class="muted">${esc(c.email||'')} · ${esc(c.phone||'')} · ${esc(c.state||'')} / ${esc(c.region||regionForState(c.state)||'')} Region</p>
+      </div>
+      <div class="isaOverall" style="border-color:${scoreColor(pct)}"><strong>${esc(pct)}%</strong><span>${esc(s.overallLabel||record.overallLabel||'')}</span></div>
+    </div>
+    <div class="isaScoreStripV44">${cats.map(isaScoreCard).join('')}</div>
+    ${isaHowToReadHtml()}
+    ${isaComparisonTable(cats, c)}
+    ${isaCandidateSuggestion(cats, c)}
+    <section class="reportSection isaReportBlock"><h3>Category Interpretation</h3><div class="isaCategoryCards">${cats.map(cat=>`<article class="isaCategoryCard"><div class="isaCategoryAccent" style="background:${barColor(cat.score)}"></div><div><h4>${esc(cat.name)} <span>${esc(cat.score)}% · ${esc(cat.label)}</span></h4><p>${esc(cat.description||'')}</p><small>Benchmark ${esc(cat.benchmark)}% · Median ${esc(cat.median)}%</small></div></article>`).join('')}</div></section>
+    ${isaInDepth(record.answers||{}, c)}
+  </div>`;
+}
+

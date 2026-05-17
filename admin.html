@@ -7,52 +7,58 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main>
-    <section class="hero adminHero">
-      <h1>Discernment Center Admin Dashboard</h1>
-      <p>View stored candidate assessment submissions, open reports, and download reports.</p>
-      <p><a href="index.html">← Back to assessment</a></p>
+  <main class="adminMain">
+    <section class="hero adminDashboardHero">
+      <div class="adminHeroTop">
+        <div>
+          <div class="eyebrow">Discernment Center</div>
+          <h1>Admin Dashboard</h1>
+          <p>Review candidate progress, open completed reports, and manage the forms and uploads connected to each candidate file.</p>
+        </div>
+        <button id="logoutBtn" type="button" class="secondaryBtn adminHeroLogout hidden">Logout</button>
+      </div>
     </section>
 
-    <section id="loginCard" class="card">
+    <section id="loginCard" class="card authCard">
       <h2>Admin Login</h2>
-      <p class="muted">Enter the admin password configured in Netlify.</p>
+      <p class="muted">Enter the admin password configured for this Discernment Center dashboard.</p>
       <label>Admin Password
         <input id="adminPassword" type="password" autocomplete="current-password">
       </label>
-      <button id="loginBtn" type="button">View Submissions</button>
+      <button id="loginBtn" type="button">View Dashboard</button>
       <p id="loginMessage" class="muted"></p>
     </section>
 
     <section id="dashboard" class="hidden">
-      <div class="card dashboardTools">
-        <h2>Submissions</h2>
-        <div class="toolGrid">
-          <label>Search
-            <input id="searchInput" placeholder="Candidate name, email, state, region">
+      <section class="adminTopRow">
+        <div class="adminStat"><strong id="candidateCountStat">0</strong><span>Candidates</span></div>
+        <div class="adminStat"><strong id="completedItemCountStat">0</strong><span>Completed Items</span></div>
+        <div class="adminControls">
+          <label class="srLabel">Search
+            <input id="searchInput" placeholder="Search by name, email, phone, state, region, assessment, or form">
           </label>
-          <label>Region
+          <label class="srLabel">Region
             <select id="regionFilter"><option value="">All regions</option></select>
           </label>
-          <label>Sort
+          <label class="srLabel">Sort
             <select id="sortSelect">
-              <option value="newest">Newest first</option>
-              <option value="oldest">Oldest first</option>
-              <option value="highest">Highest overall</option>
-              <option value="lowest">Lowest overall</option>
+              <option value="newest">Newest activity</option>
+              <option value="oldest">Oldest activity</option>
               <option value="name">Name A-Z</option>
               <option value="region">Region A-Z</option>
+              <option value="highest">Highest score</option>
+              <option value="lowest">Lowest score</option>
             </select>
           </label>
         </div>
-        <div class="actions slimActions">
-          <button id="refreshBtn" type="button">Refresh</button>
-          <button id="logoutBtn" type="button" class="secondaryBtn">Logout</button>
-        </div>
+      </section>
+
+      <div class="adminSectionTitle">
+        <h2>Candidate Files</h2>
         <p id="countLine" class="muted"></p>
       </div>
 
-      <div id="submissionsList" class="adminList"></div>
+      <div id="submissionsList" class="adminCandidateGrid"></div>
       <section id="adminReport" class="report hidden"></section>
     </section>
   </main>

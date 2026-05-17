@@ -34,7 +34,12 @@ exports.handler = async (event) => {
       }
       const { data, error } = await admin.from('assessment_results').select('*').order('created_at', { ascending: false });
       if (error) throw error;
-      return json(200, { ok: true, submissions: (data || []).map(summaryFromSupabase), source: 'supabase' });
+
+      let applications = [];
+      const appResult = await admin.from('candidate_applications').select('*').order('updated_at', { ascending: false });
+      if (!appResult.error) applications = (appResult.data || []).map(applicationSummary);
+
+      return json(200, { ok: true, submissions: (data || []).map(summaryFromSupabase), applications, source: 'supabase' });
     }
 
     const store = getAssessmentStore();
@@ -51,17 +56,39 @@ exports.handler = async (event) => {
       try { const record = await store.get(blob.key, { type: 'json' }); if (record) submissions.push(summary(record)); } catch (_) {}
     }
     submissions.sort((a, b) => new Date(b.submittedAt || 0) - new Date(a.submittedAt || 0));
-    return json(200, { ok: true, submissions, source: 'blobs' });
+    return json(200, { ok: true, submissions, applications: [], source: 'blobs' });
   } catch (error) {
     return json(500, { ok: false, error: error.message || 'Unexpected admin dashboard error.' });
   }
 };
 
+function applicationSummary(row) {
+  const app = row.application || {};
+  return {
+    id: row.id,
+    userId: row.user_id,
+    name: row.candidate_name || app.fullName || '',
+    email: row.email || app.email || '',
+    phone: row.phone || app.phone || '',
+    state: row.state || app.state || '',
+    region: row.region || app.region || '',
+    status: row.status || 'draft',
+    completion: row.completion ?? 0,
+    updatedAt: row.updated_at,
+    submittedAt: row.submitted_at,
+    application: app,
+    photoName: row.photo_name || '',
+    resumeName: row.resume_name || '',
+    hasPhoto: Boolean(row.photo_path),
+    hasResume: Boolean(row.resume_path)
+  };
+}
 function summaryFromSupabase(row) {
   const c = row.candidate || {};
   const s = row.scores || {};
   return {
     id: row.id,
+    userId: row.user_id,
     submittedAt: row.created_at,
     name: c.name || c.full_name || '',
     email: c.email || '',

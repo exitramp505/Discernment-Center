@@ -1,0 +1,495 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Discernment Center Application | Discernment Center</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <nav class="portalNav">
+    <strong>Discernment Center</strong>
+    <span></span>
+    <a href="dashboard.html">Dashboard</a>
+    <a href="profile.html">Profile</a>
+    <button id="logoutBtn" type="button" class="linkButton">Logout</button>
+  </nav>
+
+  <section class="hero">
+    <h1>Discernment Center Application</h1>
+    <p>Complete the sections below. You can save a draft and return later before submitting your final application.</p>
+  </section>
+
+  <div class="applicationLayout">
+    <aside class="applicationSidebar">
+      <div class="applicationProgressBox">
+        <strong>Application Progress</strong>
+        <div class="applicationProgressBar"><span id="applicationProgressFill"></span></div>
+        <p id="applicationProgressText" class="muted">Loading...</p>
+      </div>
+      <nav class="applicationSectionNav">
+        <a href="#personal">Personal Info</a>
+        <a href="#uploads">Uploads</a>
+        <a href="#family">Family</a>
+        <a href="#faith">Faith</a>
+        <a href="#ministry">Ministry Experience</a>
+        <a href="#financial">Financial Info</a>
+        <a href="#vision">Planting Vision</a>
+        <a href="#waiver">Waiver</a>
+      </nav>
+      <p class="muted smallNote">Drafts are saved to your candidate account. Final submission makes the application visible to the admin dashboard.</p>
+    </aside>
+
+    <form id="applicationForm" class="applicationForm">
+
+      <section id="personal" class="applicationSection">
+        <div class="applicationSectionHead">
+          <div>
+            <h2>Personal Information</h2>
+            <p>Basic contact, location, and regional information.</p>
+          </div>
+          <span id="applicationStatusPill" class="adminPill pending">Draft</span>
+        </div>
+        <div class="applicationSectionBody grid two">
+          <div><label>Full Name</label><input name="fullName" id="fullName" required></div>
+          <div><label>Date of Birth</label><input name="birthDate" id="birthDate" type="date"></div>
+          <div><label>Email Address</label><input name="email" id="email" type="email" required></div>
+          <div><label>Phone Number</label><input name="phone" id="phone"></div>
+          <div><label>Citizenship</label><select name="citizenship" id="citizenship">
+            <option>Afghanistan</option>
+            <option>Albania</option>
+            <option>Algeria</option>
+            <option>Andorra</option>
+            <option>Angola</option>
+            <option>Antigua and Barbuda</option>
+            <option>Argentina</option>
+            <option>Armenia</option>
+            <option>Australia</option>
+            <option>Austria</option>
+            <option>Azerbaijan</option>
+            <option>Bahamas</option>
+            <option>Bahrain</option>
+            <option>Bangladesh</option>
+            <option>Barbados</option>
+            <option>Belarus</option>
+            <option>Belgium</option>
+            <option>Belize</option>
+            <option>Benin</option>
+            <option>Bhutan</option>
+            <option>Bolivia</option>
+            <option>Bosnia and Herzegovina</option>
+            <option>Botswana</option>
+            <option>Brazil</option>
+            <option>Brunei</option>
+            <option>Bulgaria</option>
+            <option>Burkina Faso</option>
+            <option>Burundi</option>
+            <option>Cabo Verde</option>
+            <option>Cambodia</option>
+            <option>Cameroon</option>
+            <option>Canada</option>
+            <option>Central African Republic</option>
+            <option>Chad</option>
+            <option>Chile</option>
+            <option>China</option>
+            <option>Colombia</option>
+            <option>Comoros</option>
+            <option>Congo</option>
+            <option>Costa Rica</option>
+            <option>Côte d’Ivoire</option>
+            <option>Croatia</option>
+            <option>Cuba</option>
+            <option>Cyprus</option>
+            <option>Czech Republic</option>
+            <option>Democratic Republic of the Congo</option>
+            <option>Denmark</option>
+            <option>Djibouti</option>
+            <option>Dominica</option>
+            <option>Dominican Republic</option>
+            <option>Ecuador</option>
+            <option>Egypt</option>
+            <option>El Salvador</option>
+            <option>Equatorial Guinea</option>
+            <option>Eritrea</option>
+            <option>Estonia</option>
+            <option>Eswatini</option>
+            <option>Ethiopia</option>
+            <option>Fiji</option>
+            <option>Finland</option>
+            <option>France</option>
+            <option>Gabon</option>
+            <option>Gambia</option>
+            <option>Georgia</option>
+            <option>Germany</option>
+            <option>Ghana</option>
+            <option>Greece</option>
+            <option>Grenada</option>
+            <option>Guatemala</option>
+            <option>Guinea</option>
+            <option>Guinea-Bissau</option>
+            <option>Guyana</option>
+            <option>Haiti</option>
+            <option>Honduras</option>
+            <option>Hungary</option>
+            <option>Iceland</option>
+            <option>India</option>
+            <option>Indonesia</option>
+            <option>Iran</option>
+            <option>Iraq</option>
+            <option>Ireland</option>
+            <option>Israel</option>
+            <option>Italy</option>
+            <option>Jamaica</option>
+            <option>Japan</option>
+            <option>Jordan</option>
+            <option>Kazakhstan</option>
+            <option>Kenya</option>
+            <option>Kiribati</option>
+            <option>Kuwait</option>
+            <option>Kyrgyzstan</option>
+            <option>Laos</option>
+            <option>Latvia</option>
+            <option>Lebanon</option>
+            <option>Lesotho</option>
+            <option>Liberia</option>
+            <option>Libya</option>
+            <option>Liechtenstein</option>
+            <option>Lithuania</option>
+            <option>Luxembourg</option>
+            <option>Madagascar</option>
+            <option>Malawi</option>
+            <option>Malaysia</option>
+            <option>Maldives</option>
+            <option>Mali</option>
+            <option>Malta</option>
+            <option>Marshall Islands</option>
+            <option>Mauritania</option>
+            <option>Mauritius</option>
+            <option>Mexico</option>
+            <option>Micronesia</option>
+            <option>Moldova</option>
+            <option>Monaco</option>
+            <option>Mongolia</option>
+            <option>Montenegro</option>
+            <option>Morocco</option>
+            <option>Mozambique</option>
+            <option>Myanmar</option>
+            <option>Namibia</option>
+            <option>Nauru</option>
+            <option>Nepal</option>
+            <option>Netherlands</option>
+            <option>New Zealand</option>
+            <option>Nicaragua</option>
+            <option>Niger</option>
+            <option>Nigeria</option>
+            <option>North Korea</option>
+            <option>North Macedonia</option>
+            <option>Norway</option>
+            <option>Oman</option>
+            <option>Pakistan</option>
+            <option>Palau</option>
+            <option>Palestine</option>
+            <option>Panama</option>
+            <option>Papua New Guinea</option>
+            <option>Paraguay</option>
+            <option>Peru</option>
+            <option>Philippines</option>
+            <option>Poland</option>
+            <option>Portugal</option>
+            <option>Puerto Rico</option>
+            <option>Qatar</option>
+            <option>Romania</option>
+            <option>Russia</option>
+            <option>Rwanda</option>
+            <option>Saint Kitts and Nevis</option>
+            <option>Saint Lucia</option>
+            <option>Saint Vincent and the Grenadines</option>
+            <option>Samoa</option>
+            <option>San Marino</option>
+            <option>São Tomé and Príncipe</option>
+            <option>Saudi Arabia</option>
+            <option>Senegal</option>
+            <option>Serbia</option>
+            <option>Seychelles</option>
+            <option>Sierra Leone</option>
+            <option>Singapore</option>
+            <option>Slovakia</option>
+            <option>Slovenia</option>
+            <option>Solomon Islands</option>
+            <option>Somalia</option>
+            <option>South Africa</option>
+            <option>South Korea</option>
+            <option>South Sudan</option>
+            <option>Spain</option>
+            <option>Sri Lanka</option>
+            <option>Sudan</option>
+            <option>Suriname</option>
+            <option>Sweden</option>
+            <option>Switzerland</option>
+            <option>Syria</option>
+            <option>Taiwan</option>
+            <option>Tajikistan</option>
+            <option>Tanzania</option>
+            <option>Thailand</option>
+            <option>Timor-Leste</option>
+            <option>Togo</option>
+            <option>Tonga</option>
+            <option>Trinidad and Tobago</option>
+            <option>Tunisia</option>
+            <option>Turkey</option>
+            <option>Turkmenistan</option>
+            <option>Tuvalu</option>
+            <option>Uganda</option>
+            <option>Ukraine</option>
+            <option>United Arab Emirates</option>
+            <option>United Kingdom</option>
+            <option selected>United States</option>
+            <option>Uruguay</option>
+            <option>Uzbekistan</option>
+            <option>Vanuatu</option>
+            <option>Vatican City</option>
+            <option>Venezuela</option>
+            <option>Vietnam</option>
+            <option>Yemen</option>
+            <option>Zambia</option>
+            <option>Zimbabwe</option>
+            <option>Other</option>
+          </select></div>
+          <div class="full"><label>Street Address</label><input name="address"></div>
+          <div><label>City</label><input name="city"></div>
+          <div><label>State</label><select name="state" id="state" required></select></div>
+          <div><label>ZIP / Postal Code</label><input name="zip"></div>
+          <div><label>Open Bible Region</label><select name="region" id="region">
+            <option value="">Select region</option>
+            <option>Pacific</option>
+            <option>Mountain Plains</option>
+            <option>Central</option>
+            <option>East</option>
+            <option>South East</option>
+          </select></div>
+        </div>
+      </section>
+
+      <section id="uploads" class="applicationSection">
+        <div class="applicationSectionHead">
+          <div>
+            <h2>Photo and Resume Uploads</h2>
+            <p>Upload a candidate photo and current resume. PDF is preferred for resumes.</p>
+          </div>
+          <span class="adminPill form">Uploads</span>
+        </div>
+        <div class="applicationSectionBody uploadGrid">
+          <div class="applicationUpload">
+            <strong>Candidate Photo</strong>
+            <p class="muted">JPG or PNG. Clear headshot or ministry profile photo.</p>
+            <input name="photo" id="photo" type="file" accept="image/png,image/jpeg,image/webp">
+            <p id="photoStatus" class="muted smallNote"></p>
+          </div>
+          <div class="applicationUpload">
+            <strong>Resume</strong>
+            <p class="muted">PDF preferred. Include ministry, work, education, and leadership history.</p>
+            <input name="resume" id="resume" type="file" accept=".pdf,.doc,.docx,application/pdf">
+            <p id="resumeStatus" class="muted smallNote"></p>
+          </div>
+        </div>
+      </section>
+
+      <section id="family" class="applicationSection">
+        <div class="applicationSectionHead">
+          <div>
+            <h2>Family Information</h2>
+            <p>Marriage, spouse, and children information.</p>
+          </div>
+        </div>
+        <div class="applicationSectionBody grid">
+          <div class="grid two">
+            <div><label>Marital Status</label><select name="maritalStatus" id="maritalStatus"><option value="">Select</option><option>Single</option><option>Married</option><option>Widowed</option><option>Divorced</option></select></div>
+          </div>
+          <div id="spouseInfoBlock" class="grid two">
+            <div><label>Spouse Name</label><input name="spouseName" id="spouseName"></div>
+            <div><label>Spouse Birth Date</label><input name="spouseBirthDate" type="date"></div>
+            <div><label>Spouse Marital History</label><select name="spouseMaritalHistory">
+              <option value="">Select</option>
+              <option>Married, never divorced</option>
+              <option>Previously divorced</option>
+              <option>Widowed</option>
+              <option>Other</option>
+            </select></div>
+          </div>
+
+          <div>
+            <div class="inlineHeader">
+              <label>Children</label>
+              <button type="button" id="addChildBtn" class="smallButton">Add Child</button>
+            </div>
+            <div id="childrenList" class="repeatList"></div>
+            <p class="muted smallNote">Add children by birth or marriage, if applicable.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="faith" class="applicationSection">
+        <div class="applicationSectionHead">
+          <div>
+            <h2>Faith and Calling</h2>
+            <p>Personal testimony and call to ministry.</p>
+          </div>
+        </div>
+        <div class="applicationSectionBody grid">
+          <div><label>Conversion Story</label><textarea class="storyTextarea" name="conversionStory" placeholder="Briefly describe how you came to faith in Christ."></textarea></div>
+          <div><label>Call to Ministry</label><textarea class="storyTextarea" name="callToMinistry" placeholder="Describe how you have discerned your call to ministry and church pioneering."></textarea></div>
+        </div>
+      </section>
+
+      <section id="ministry" class="applicationSection">
+        <div class="applicationSectionHead">
+          <div>
+            <h2>Ministerial Experience Overview</h2>
+            <p>Credentialing, sponsoring organization, planting experience, and ministry roles.</p>
+          </div>
+        </div>
+        <div class="applicationSectionBody grid">
+          <div class="grid two">
+            <div><label>Sponsoring Church?</label><select name="hasSponsor"><option value="">Select</option><option>Yes</option><option>No</option></select></div>
+            <div><label>If yes, what church?</label><input name="sponsoringOrg" placeholder="Church name"></div>
+            <div><label>Ministerial License Status</label><select name="licenseStatus"><option value="">Select</option><option>None</option><option>Licensed</option><option>Certified</option><option>Ordained</option></select></div>
+          </div>
+
+          <div>
+            <label>Planting Experience / Training</label>
+            <div class="checkGrid">
+              <label class="checkCard"><input type="checkbox" name="plantingExperience" value="Served as planting/pioneer intern"> Served as planting/pioneer intern</label>
+              <label class="checkCard"><input type="checkbox" name="plantingExperience" value="Been part of a church pioneer core group"> Been part of a church pioneer core group</label>
+              <label class="checkCard"><input type="checkbox" name="plantingExperience" value="Joined a new church within its first year"> Joined a new church within its first year</label>
+              <label class="checkCard"><input type="checkbox" name="plantingExperience" value="Participated in church planter/pioneer training"> Participated in church planter/pioneer training</label>
+            </div>
+          </div>
+
+          <div>
+            <div class="inlineHeader">
+              <label>Recent Ministry Roles</label>
+              <button type="button" id="addRoleBtn" class="smallButton">Add Role</button>
+            </div>
+            <div id="rolesList" class="repeatList"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="financial" class="applicationSection">
+        <div class="applicationSectionHead">
+          <div>
+            <h2>Financial Information</h2>
+            <p>Income, debt, bankruptcy history, and financial obligations.</p>
+          </div>
+        </div>
+        <div class="applicationSectionBody grid">
+          <div class="grid two">
+            <div><label>Last Year’s Total Household Income</label><select name="lastYearIncome"><option value="">Select range</option><option>Under $30k</option><option>Between $30k to $45k</option><option>Between $45k to $60k</option><option>Between $60k to $85k</option><option>Between $85k to $120k</option><option>Over $120k</option></select></div>
+            <div><label>Five-Year Average Income Range</label><select name="averageIncome"><option value="">Select range</option><option>Under $30k</option><option>Between $30k to $45k</option><option>Between $45k to $60k</option><option>Between $60k to $85k</option><option>Between $85k to $120k</option><option>Over $120k</option></select></div>
+            <div><label>Have you ever declared personal bankruptcy?</label><select name="bankruptcy"><option value="">Select</option><option>Yes</option><option>No</option></select></div>
+          </div>
+
+          <div>
+            <label>Debt Overview</label>
+            <p class="muted smallNote">You can edit the debt type in the first column. Change any row label as needed or leave unused rows blank.</p>
+            <div class="debtTable">
+              <div class="debtHead"><span>Debt Type</span><span>Amount</span><span>Interest</span><span>Monthly Payment</span></div>
+              <div class="debtRow"><input name="debt_school_type" value="School Loans"><input name="debt_school_amount"><input name="debt_school_interest"><input name="debt_school_payment"></div>
+              <div class="debtRow"><input name="debt_mortgage_type" value="Mortgage"><input name="debt_mortgage_amount"><input name="debt_mortgage_interest"><input name="debt_mortgage_payment"></div>
+              <div class="debtRow"><input name="debt_car_type" value="Car Loans"><input name="debt_car_amount"><input name="debt_car_interest"><input name="debt_car_payment"></div>
+              <div class="debtRow"><input name="debt_credit_type" value="Credit Card Balance"><input name="debt_credit_amount"><input name="debt_credit_interest"><input name="debt_credit_payment"></div>
+              <div class="debtRow"><input name="debt_other_type" value="Other Loans"><input name="debt_other_amount"><input name="debt_other_interest"><input name="debt_other_payment"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="vision" class="applicationSection">
+        <div class="applicationSectionHead">
+          <div>
+            <h2>Church Planting Plan and Vision</h2>
+            <p>Current vision, target community, financial plan, timing, counsel, and support network.</p>
+          </div>
+        </div>
+        <div class="applicationSectionBody grid">
+          <div class="infoBox">
+            <strong>Still discerning?</strong>
+            <p>If you do not know the answer to every question, have not thought through every detail, or are still exploring church multiplication, that is okay. Indicate that clearly and answer as honestly and completely as you can at this stage.</p>
+          </div>
+          <div><label>Why do you want to plant a church?</label><textarea name="whyPlant"></textarea></div>
+          <div><label>What type of church plant are you interested in doing?</label><textarea name="plantType"></textarea></div>
+          <div class="grid two">
+            <div><label>Target Community</label><select name="targetAudience"><option value="">Select</option><option>Not sure yet</option><option>Culturally Similar</option><option>Cross-cultural</option><option>Mixed Culturally</option></select></div>
+            <div><label>Have you talked with your current pastor about church planting?</label><select name="talkedToPastor"><option value="">Select</option><option>Yes</option><option>No</option></select></div>
+          </div>
+          <div><label>How do you plan to provide financially for your family and the church during the first two years?</label><textarea name="financialPlan"></textarea></div>
+          <div><label>When do you plan to initiate the planting process? Please explain any major factors that impact timing.</label><textarea name="plantTiming"></textarea></div>
+          <div><label>What counsel has your pastor given you about your ability to church plant?</label><textarea name="pastorCounsel"></textarea></div>
+          <div><label>Has your current pastor extended any promises of support? If so, what?</label><textarea name="pastorSupport"></textarea></div>
+          <div><label>Who is currently supporting your vision and efforts to church plant, and how?</label><textarea name="supportNetwork"></textarea></div>
+          <div><label>Describe how your spouse sees themselves involved in the church plant.</label><textarea name="spouseInvolvement"></textarea></div>
+        </div>
+      </section>
+
+      <section id="waiver" class="applicationSection">
+        <div class="applicationSectionHead">
+          <div>
+            <h2>Waiver and Agreements</h2>
+            <p>Required release, authorization, Statement of Faith, and Core Convictions acknowledgments.</p>
+          </div>
+        </div>
+        <div class="applicationSectionBody grid">
+          <div class="waiverBox">
+            <strong>Waiver and Release</strong>
+            <p>I authorize references, schools, employers, supervisors, churches, denominational agencies, or other relevant persons or organizations to provide information regarding my character and fitness for church ministry. I understand that background and/or credit checks may be conducted as part of this process.</p>
+            <label class="checkCard"><input type="checkbox" name="waiverAgreement" value="Yes"> I have read and understand the waiver and agree to its terms.</label>
+          </div>
+
+          <div class="statementBox">
+            <h3>Statement of Faith &amp; Core Convictions</h3>
+            <p>You are almost finished with the Discernment Center Application.</p>
+            <p>If you have not already read through the Open Bible Statement of Faith, please do that now.</p>
+            <p><a href="https://www.openbible.org/about/who-we-are" target="_blank" rel="noopener">Open Bible Statement of Faith</a></p>
+
+            <h4>Our Core Convictions About Church Multiplication</h4>
+            <ol>
+              <li><strong>We multiply churches to make disciples.</strong> Our mission is not to gather Christians from other churches, but to reach those who do not yet know Jesus. We are committed to seeing the lost saved, discipled, and brought into the family of God. Every church we plant is focused on engaging people far from faith and guiding them into a transformative relationship with Christ.</li>
+              <li><strong>We multiply churches that multiply.</strong> Healthy churches reproduce. Our church plants intentionally raise up new leaders, invest in the Open Bible Church Multiplication Collective, help host church planting events, and mentor other church multipliers. Multiplication is not an afterthought. It is an expectation.</li>
+              <li><strong>We multiply churches that experience God.</strong> Knowing about God is not enough. We want to encounter Him. Our church plants embrace the work of the Holy Spirit and equip people to minister in ways that are both healthy and fruitful. We believe that a thriving church is marked by both sound teaching and Spirit led transformation.</li>
+              <li><strong>We multiply churches that are unique in expression but unified in practice.</strong> Every church will be rooted in key biblical practices while expressing its mission in ways that fit its local context. These churches will gather regularly, teach the scriptures, practice communion and baptism, have qualified leadership, affiliate with Open Bible, contribute to the movement, and stay committed to outreach and evangelism.</li>
+            </ol>
+          </div>
+
+          <div class="agreementGroup">
+            <label>I am in harmony with the Open Bible Statement of Faith</label>
+            <label class="checkCard"><input type="radio" name="statementOfFaith" value="Yes"> Yes, I am in harmony with the Statement of Faith.</label>
+            <label class="checkCard"><input type="radio" name="statementOfFaith" value="No"> No, I object to one or more of the statements.</label>
+            <div id="statementExplainBlock" class="hidden">
+              <label>Please explain</label>
+              <textarea name="statementFaithExplanation"></textarea>
+            </div>
+          </div>
+
+          <div class="agreementGroup">
+            <label>I have read the Core Convictions</label>
+            <label class="checkCard"><input type="checkbox" name="coreConvictions" value="Yes"> Yes</label>
+          </div>
+        </div>
+      </section>
+
+      <div class="applicationActions">
+        <button type="button" id="saveDraftBtn" class="secondaryButton">Save Draft</button>
+        <button type="button" id="submitApplicationBtn">Submit Application</button>
+      </div>
+      <p id="applicationMessage" class="muted"></p>
+      <p id="autoSaveStatus" class="muted autoSaveStatus">Auto-save ready.</p>
+
+    </form>
+  </div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="auth.js"></script>
+<script src="application.js"></script>
+</body>
+</html>

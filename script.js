@@ -45,6 +45,44 @@ function interpretation(s){if(s===null)return'N/A';if(s<2)return'Not Yet Evident
 let currentIndex=0;
 let currentItems=[];
 let answers={};
+let autosaveReady=false;
+function characterDraftKey(){
+ const email=(assessmentForm?.email?.value||'anonymous').trim().toLowerCase();
+ return `discernment_character_draft_${email}`;
+}
+function saveCharacterDraft(){
+ if(!autosaveReady || !assessmentForm?.email?.value)return;
+ const draft={answers,currentIndex,phone:assessmentForm.phone.value,state:state.value,married:married.value,updatedAt:new Date().toISOString()};
+ localStorage.setItem(characterDraftKey(),JSON.stringify(draft));
+ showAutoSaveStatus('Progress saved');
+}
+function loadCharacterDraft(){
+ try{
+  const raw=localStorage.getItem(characterDraftKey());
+  if(!raw)return;
+  const draft=JSON.parse(raw);
+  if(draft && draft.answers){
+   answers=draft.answers||{};
+   currentIndex=Number(draft.currentIndex||0);
+   if(!assessmentForm.phone.value && draft.phone)assessmentForm.phone.value=draft.phone;
+   if(!state.value && draft.state)state.value=draft.state;
+   if(!married.value && draft.married)married.value=draft.married;
+  }
+ }catch(_){}
+}
+function clearCharacterDraft(){
+ try{localStorage.removeItem(characterDraftKey())}catch(_){}
+}
+function showAutoSaveStatus(text){
+ let el=document.getElementById('assessmentAutosaveStatus');
+ if(!el){
+  el=document.createElement('p');
+  el.id='assessmentAutosaveStatus';
+  el.className='muted autoSaveStatus';
+  assessmentForm.insertBefore(el,questions);
+ }
+ el.textContent=text;
+}
 
 async function init(){
  if(window.dcAuth){
@@ -65,8 +103,13 @@ async function init(){
  } else {
   state.innerHTML='<option value="">Select state</option>'+Object.entries(STATES).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
  }
+ loadCharacterDraft();
+ autosaveReady=true;
  renderQuestions();
- married.addEventListener('change',()=>{answers={};currentIndex=0;renderQuestions()});
+ showAutoSaveStatus(Object.keys(answers).length ? 'Progress restored and auto-save is on.' : 'Auto-save is on.');
+ married.addEventListener('change',()=>{answers={};currentIndex=0;saveCharacterDraft();renderQuestions()});
+ assessmentForm.addEventListener('input',saveCharacterDraft);
+ assessmentForm.addEventListener('change',saveCharacterDraft);
  assessmentForm.addEventListener('submit',submit)
 }
 
@@ -90,6 +133,7 @@ function renderQuestions(){const marriedYes=married.value==='Yes';currentItems=o
   isAdvancing=true;
   const input=label.querySelector('input');
   answers[item.name]=Number(input.value);
+  saveCharacterDraft();
   document.querySelectorAll('.slideScale label').forEach(l=>l.classList.remove('selected'));
   label.classList.add('selected');
   input.checked=true;
@@ -98,10 +142,10 @@ function renderQuestions(){const marriedYes=married.value==='Yes';currentItems=o
   setTimeout(()=>{currentIndex++;renderQuestions()},300)
  }));
 }
-function prevQuestion(){if(currentIndex>0){currentIndex--;renderQuestions()}}
+function prevQuestion(){if(currentIndex>0){currentIndex--;saveCharacterDraft();renderQuestions()}}
 function showCompleteStep(){const pct=100;const missing=missingItems();
  if(missing.length){currentIndex=currentItems.findIndex(item=>item.name===missing[0].name);renderQuestions();showMessage('One assessment question still needs an answer. I moved you back to it.','warning');return}
- document.getElementById('generateReportBtn').classList.remove('hidden');questions.innerHTML=`<div class="card assessmentShell"><h2>Assessment Complete</h2><div class="progressWrap"><div class="progressMeta"><span>Assessment questions complete</span><span>${pct}% complete</span></div><div class="progressTrack"><div class="progressBar" style="width:100%"></div></div></div><p class="muted">All required assessment questions have been answered. Generate the report below, or use Previous Question if you need to review your final answer.</p><div class="slideActions"><button type="button" class="secondaryBtn" onclick="prevQuestion()">Previous Question</button></div></div>`}
+ document.getElementById('generateReportBtn').classList.remove('hidden');questions.innerHTML=`<div class="card assessmentShell"><h2>Assessment Complete</h2><div class="progressWrap"><div class="progressMeta"><span>Assessment questions complete</span><span>${pct}% complete</span></div><div class="progressTrack"><div class="progressBar" style="width:100%"></div></div></div><p class="muted">All required assessment questions have been answered. Click Finish Assessment below to view and save the report, or use Previous Question if you need to review your final answer.</p><div class="slideActions"><button type="button" class="secondaryBtn" onclick="prevQuestion()">Previous Question</button></div></div>`}
 
 
 function calc(){const marriedYes=married.value==='Yes';let results=[];sections.forEach((s,si)=>{if(s[2]&&!marriedYes){results.push({name:s[0],score:null,label:'N/A'});return}let vals=s[1].map((_,qi)=>Number(answers[`q_${si}_${qi}`]||0));let avg=vals.reduce((a,b)=>a+b,0)/vals.length;results.push({name:s[0],score:+avg.toFixed(2),label:interpretation(avg)})});const scored=results.filter(r=>r.score!==null);const overall=+(scored.reduce((a,b)=>a+b.score,0)/scored.length).toFixed(2);return {results,overall,overallLabel:interpretation(overall),top:[...scored].sort((a,b)=>b.score-a.score).slice(0,3),growth:[...scored].sort((a,b)=>a.score-b.score).slice(0,3)}}
@@ -124,6 +168,7 @@ function submit(e){
  const candidate=Object.fromEntries(fd.entries());
  candidate.region=(window.dcAuth&&window.dcAuth.regionForState)?window.dcAuth.regionForState(candidate.state):'';
  const scores=calc();
+ clearCharacterDraft();
  const html=reportHtml(candidate,scores);
  window.currentReport={candidate,scores,answers,reflections:{}};
  report.innerHTML=html+`<div class="actions"><button type="button" onclick="downloadReport()">Download Report</button></div><div id="sendStatus" class="sendStatus">Sending and storing report...</div>`;
