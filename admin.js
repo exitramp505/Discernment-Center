@@ -33,6 +33,16 @@ function regionForState(state){return REGION_BY_STATE[state]||'Unassigned'}
 let password='';
 let submissions=[];
 let applications=[];
+let assignments=[];
+let profiles=[];
+let currentView='active';
+
+const ASSIGNMENT_ITEMS=[
+  {key:'ministry_readiness', label:'Readiness', fullTitle:'Ministry Readiness Inventory', type:'assessment'},
+  {key:'discernment_application', label:'Application', fullTitle:'Discernment Center Application', type:'form'},
+  {key:'character_qualities', label:'Character', fullTitle:'Character Qualities Assessment', type:'assessment'},
+  {key:'pastoral_reference', label:'Reference Form', fullTitle:'Pastoral Reference Form', type:'form'}
+];
 
 function initAdmin(){
   regionFilter.innerHTML='<option value="">All regions</option>'+REGION_ORDER.map(region=>`<option value="${region}">${region}</option>`).join('');
@@ -40,6 +50,7 @@ function initAdmin(){
   if(password){adminPassword.value=password;loadSubmissions();}
   loginBtn.addEventListener('click',()=>{password=adminPassword.value.trim();sessionStorage.setItem('dc_admin_password',password);loadSubmissions();});
   logoutBtn.addEventListener('click',()=>{sessionStorage.removeItem('dc_admin_password');password='';dashboard.classList.add('hidden');loginCard.classList.remove('hidden');logoutBtn.classList.add('hidden');adminPassword.value='';});
+  if(typeof refreshBtn!=='undefined' && refreshBtn) refreshBtn.addEventListener('click',loadSubmissions);
   searchInput.addEventListener('input',renderList);
   regionFilter.addEventListener('change',renderList);
   sortSelect.addEventListener('change',renderList);
@@ -58,6 +69,8 @@ async function loadSubmissions(){
     const data=await adminFetch({});
     submissions=data.submissions||[];
     applications=data.applications||[];
+    assignments=data.assignments||[];
+    profiles=data.profiles||[];
     loginCard.classList.add('hidden');
     dashboard.classList.remove('hidden');
     logoutBtn.classList.remove('hidden');
@@ -74,6 +87,10 @@ async function loadSubmissions(){
 function assessmentTitle(r){
   return r.assessmentTitle || (r.assessmentType==='isa_readiness' ? 'Ministry Readiness Inventory' : 'Character Qualities Assessment');
 }
+function candidateKeyFromEmail(email){
+  const clean=String(email||'').trim().toLowerCase();
+  return clean ? `email:${clean}` : '';
+}
 function candidateKey(r){
   const email=String(r.email||'').trim().toLowerCase();
   if(email) return `email:${email}`;
@@ -81,12 +98,47 @@ function candidateKey(r){
 }
 function groupCandidates(rows){
   const map=new Map();
+
+  for(const profile of profiles||[]){
+    const key=candidateKeyFromEmail(profile.email);
+    if(!key) continue;
+    map.set(key,{
+      key,
+      userId:profile.id,
+      name:profile.full_name||profile.email||'Unnamed Candidate',
+      email:profile.email||'',
+      phone:profile.phone||'',
+      state:profile.state||'',
+      married:'',
+      reports:[],
+      application:null,
+      assignments:[],
+      archived:false
+    });
+  }
+
+  for(const app of applications||[]){
+    const email=String(app.email||app.application?.email||'').trim().toLowerCase();
+    const key=candidateKeyFromEmail(email) || candidateKey({name:app.name||app.application?.fullName, phone:app.phone||app.application?.phone});
+    if(!map.has(key)){
+      map.set(key,{key,userId:app.userId||app.user_id||'',name:app.name||app.application?.fullName||'Unnamed Candidate',email:email,phone:app.phone||app.application?.phone||'',state:app.state||app.application?.state||'',married:'',reports:[],application:null,assignments:[],archived:false});
+    }
+    const person=map.get(key);
+    person.userId=person.userId || app.userId || app.user_id || '';
+    person.name=person.name==='Unnamed Candidate' && (app.name||app.application?.fullName) ? (app.name||app.application?.fullName) : person.name;
+    person.email=person.email || email;
+    person.phone=person.phone || app.phone || app.application?.phone || '';
+    person.state=person.state || app.state || app.application?.state || '';
+    person.application=app;
+  }
+
   for(const r of rows){
     const key=candidateKey(r);
     if(!map.has(key)){
-      map.set(key,{key,name:r.name||'Unnamed Candidate',email:r.email||'',phone:r.phone||'',state:r.state||'',married:r.married||'',reports:[]});
+      map.set(key,{key,userId:r.userId||r.user_id||'',name:r.name||'Unnamed Candidate',email:r.email||'',phone:r.phone||'',state:r.state||'',married:r.married||'',reports:[],application:null,assignments:[],archived:false});
     }
     const person=map.get(key);
+    person.userId=person.userId || r.userId || r.user_id || '';
     person.name=person.name==='Unnamed Candidate' && r.name ? r.name : person.name;
     person.email=person.email || r.email || '';
     person.phone=person.phone || r.phone || '';
@@ -94,12 +146,26 @@ function groupCandidates(rows){
     person.married=person.married || r.married || '';
     person.reports.push(r);
   }
+
+  for(const a of assignments||[]){
+    const key=candidateKeyFromEmail(a.candidate_email) || `user:${a.user_id}`;
+    let person=[...map.values()].find(p=>p.userId===a.user_id || p.email?.toLowerCase()===String(a.candidate_email||'').toLowerCase());
+    if(!person){
+      person={key,userId:a.user_id||'',name:a.candidate_name||a.candidate_email||'Unnamed Candidate',email:a.candidate_email||'',phone:'',state:'',married:'',reports:[],application:null,assignments:[],archived:false};
+      map.set(key,person);
+    }
+    person.assignments.push(a);
+    if(a.candidate_archived) person.archived=true;
+  }
+
   return Array.from(map.values()).map(person=>{
-    person.reports.sort((a,b)=>new Date(b.submittedAt||0)-new Date(a.submittedAt||0));
-    person.latestAt=person.reports[0]?.submittedAt || '';
-    person.highestOverall=Math.max(...person.reports.map(r=>Number(r.overall||0)));
-    person.lowestOverall=Math.min(...person.reports.map(r=>Number(r.overall||0)));
+    person.reports.sort((a,b)=>new Date(b.submittedAt||b.created_at||0)-new Date(a.submittedAt||a.created_at||0));
+    const appDate=person.application?.submittedAt||person.application?.submitted_at||person.application?.updatedAt||person.application?.updated_at||'';
+    person.latestAt=[person.reports[0]?.submittedAt||person.reports[0]?.created_at||'', appDate].filter(Boolean).sort((a,b)=>new Date(b)-new Date(a))[0]||'';
+    person.highestOverall=person.reports.length?Math.max(...person.reports.map(r=>Number(r.overall||0))):0;
+    person.lowestOverall=person.reports.length?Math.min(...person.reports.map(r=>Number(r.overall||0))):0;
     person.region=regionForState(person.state);
+    person.archived=person.archived || person.assignments.some(a=>a.candidate_archived);
     return person;
   });
 }
@@ -110,10 +176,21 @@ function renderList(){
   if(q){
     people=people.filter(person=>{
       const reportText=person.reports.map(r=>`${assessmentTitle(r)} ${r.overallLabel} ${r.overall}`).join(' ');
-      return `${person.name} ${person.email} ${person.phone} ${person.state} ${STATES[person.state]||''} ${person.region} ${reportText}`.toLowerCase().includes(q);
+      const assignmentText=person.assignments.map(a=>`${a.item_key} ${a.status}`).join(' ');
+      return `${person.name} ${person.email} ${person.phone} ${person.state} ${STATES[person.state]||''} ${person.region} ${reportText} ${assignmentText}`.toLowerCase().includes(q);
     });
   }
   if(selectedRegion) people=people.filter(person=>person.region===selectedRegion);
+
+  const allPeople=groupCandidates(submissions);
+  const activePeople=allPeople.filter(p=>!p.archived);
+  const incompletePeople=activePeople.filter(person=>incompleteAssignments(person).length>0);
+  const archivedPeople=allPeople.filter(p=>p.archived);
+
+  if(currentView==='active') people=people.filter(p=>!p.archived);
+  if(currentView==='archived') people=people.filter(p=>p.archived);
+  if(currentView==='incomplete') people=people.filter(p=>!p.archived && incompleteAssignments(p).length>0);
+
   const sort=sortSelect.value;
   people.sort((a,b)=>{
     if(sort==='oldest') return new Date(a.latestAt||0)-new Date(b.latestAt||0);
@@ -123,16 +200,65 @@ function renderList(){
     if(sort==='region') return String(a.region||'').localeCompare(String(b.region||'')) || String(a.name||'').localeCompare(String(b.name||''));
     return new Date(b.latestAt||0)-new Date(a.latestAt||0);
   });
-  const reportCount=submissions.length;
-  const candidateTotal=groupCandidates(submissions).length;
-  if (typeof candidateCountStat !== 'undefined') candidateCountStat.textContent=String(candidateTotal);
-  if (typeof completedItemCountStat !== 'undefined') completedItemCountStat.textContent=String(reportCount);
+
+  if (typeof candidateCountStat !== 'undefined') candidateCountStat.textContent=String(activePeople.length);
+  if (typeof completedItemCountStat !== 'undefined') completedItemCountStat.textContent=String(incompletePeople.length);
   countLine.textContent=`Showing ${people.length} candidate file${people.length===1?'':'s'}`;
+  renderViewFilters(activePeople.length,incompletePeople.length,archivedPeople.length);
+
   if(!people.length){submissionsList.innerHTML='<div class="card"><p class="muted">No candidates found.</p></div>';return;}
   submissionsList.innerHTML=people.map(personCard).join('');
-  document.querySelectorAll('[data-open-report]').forEach(btn=>btn.addEventListener('click',()=>openReport(btn.dataset.openReport)));
+  document.querySelectorAll('[data-candidate-toggle]').forEach(btn=>btn.addEventListener('click',()=>toggleCandidateCard(btn.dataset.candidateToggle)));
+  document.querySelectorAll('[data-assignment-toggle]').forEach(btn=>btn.addEventListener('click',()=>toggleAssignmentUi(btn)));
+  document.querySelectorAll('[data-save-assignments]').forEach(btn=>btn.addEventListener('click',()=>saveAssignmentChanges(btn.dataset.saveAssignments)));
+  document.querySelectorAll('[data-archive-candidate]').forEach(btn=>btn.addEventListener('click',()=>archiveCandidate(btn.dataset.archiveCandidate,true)));
+  document.querySelectorAll('[data-restore-candidate]').forEach(btn=>btn.addEventListener('click',()=>archiveCandidate(btn.dataset.restoreCandidate,false)));
+  document.querySelectorAll('[data-delete-candidate]').forEach(btn=>btn.addEventListener('click',()=>showDeleteConfirm(btn.dataset.deleteCandidate)));
+  document.querySelectorAll('[data-cancel-delete]').forEach(btn=>btn.addEventListener('click',()=>hideDeleteConfirm(btn.dataset.cancelDelete)));
+  document.querySelectorAll('[data-open-report]').forEach(btn=>btn.addEventListener('click',(event)=>openReport(btn.dataset.openReport, event.currentTarget)));
+  document.querySelectorAll('[data-open-application]').forEach(btn=>btn.addEventListener('click',(event)=>openApplication(btn.dataset.openApplication, event.currentTarget)));
+  document.querySelectorAll('[data-file-kind]').forEach(btn=>btn.addEventListener('click',()=>openApplicationFile(btn.dataset.applicationId, btn.dataset.fileKind)));
 }
+function renderViewFilters(activeCount,incompleteCount,archivedCount){
+  let box=document.getElementById('assignmentViewFilters');
+  if(!box){
+    box=document.createElement('div');
+    box.id='assignmentViewFilters';
+    box.className='assignmentViewFilters';
 
+    const topRow=document.querySelector('.adminTopRow');
+    const hero=document.querySelector('.adminDashboardHero') || document.querySelector('.hero');
+
+    if(topRow && topRow.parentNode){
+      topRow.parentNode.insertBefore(box, topRow);
+    }else if(hero && hero.parentNode){
+      hero.parentNode.insertBefore(box, hero.nextSibling);
+    }else{
+      document.body.prepend(box);
+    }
+  }
+
+  let banner=document.getElementById('assignmentFilterBanner');
+  if(!banner){
+    banner=document.createElement('div');
+    banner.id='assignmentFilterBanner';
+    banner.className='assignmentFilterBanner';
+    box.parentNode.insertBefore(banner, box.nextSibling);
+  }
+
+  box.innerHTML=`<button type="button" class="${currentView==='active'?'active':''}" data-view-mode="active"><strong>${activeCount}</strong><span>Active Candidates</span><em>Show current candidate files</em></button>
+  <button type="button" class="${currentView==='incomplete'?'active':''}" data-view-mode="incomplete"><strong>${incompleteCount}</strong><span>Incomplete Assignments</span><em>Show who still has assigned work open</em></button>
+  <button type="button" class="${currentView==='archived'?'active':''}" data-view-mode="archived"><strong>${archivedCount}</strong><span>Archived</span><em>Show preserved inactive files</em></button>`;
+
+  const labels={
+    active:'Showing active candidates.',
+    incomplete:'Showing candidates with incomplete assigned work.',
+    archived:'Showing archived candidates. Archived records can be restored.'
+  };
+  banner.textContent=labels[currentView]||'Showing candidates.';
+
+  box.querySelectorAll('[data-view-mode]').forEach(btn=>btn.addEventListener('click',()=>{currentView=btn.dataset.viewMode;renderList();}));
+}
 function initialsFor(name){
   return String(name||'Candidate').trim().split(/\s+/).slice(0,2).map(x=>x[0]||'').join('').toUpperCase() || 'C';
 }
@@ -143,30 +269,60 @@ function formatDate(value){
   return d.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
 }
 function latestDate(person){return person.latestAt?formatDate(person.latestAt):'—'}
-function itemStatusPill(person){
-  const count=person.reports.length;
-  return `<span class="adminPill complete">${count} Assessment${count===1?'':'s'} Complete</span>`;
+function assignmentFor(person,key){
+  return (person.assignments||[]).find(a=>a.item_key===key);
+}
+function hasAssigned(person,key){
+  return assignmentFor(person,key)?.status==='assigned';
+}
+function hasEverAssigned(person,key){
+  return Boolean(assignmentFor(person,key));
+}
+function reportFor(person,key){
+  if(key==='character_qualities') return person.reports.find(r=>r.assessmentType!=='isa_readiness');
+  if(key==='ministry_readiness') return person.reports.find(r=>r.assessmentType==='isa_readiness');
+  return null;
+}
+function assignmentCompleted(person,key){
+  if(key==='discernment_application') return person.application?.status==='submitted';
+  if(key==='character_qualities'||key==='ministry_readiness') return Boolean(reportFor(person,key));
+  return false;
+}
+function incompleteAssignments(person){
+  return ASSIGNMENT_ITEMS.filter(item=>hasAssigned(person,item.key) && !assignmentCompleted(person,item.key));
 }
 function applicationStatus(person){
-  // Application records will plug in here when the application module is built.
-  return {status:'Not Started', complete:'—', date:'—', tone:'neutral', action:'View Candidate'};
+  const app=person.application;
+  if(!app) return {status:'Not Started', complete:'—', date:'—', tone:'neutral', action:'View Candidate'};
+  const submitted=app.status==='submitted';
+  return {status:submitted?'Submitted':'Draft', complete:`${app.completion||0}%`, date:formatDate(app.submittedAt||app.submitted_at||app.updatedAt||app.updated_at), tone:submitted?'submitted':'draft', action:submitted?'Open Application':'View Draft'};
 }
 function uploadStatus(person){
-  // Upload records will plug in here when Supabase Storage is added for photo/resume.
-  return {photo:'Missing', resume:'Missing'};
+  const app=person.application||{};
+  return {
+    photo: app.hasPhoto || app.photo_name || app.photoName ? (app.photoName || app.photo_name || 'Uploaded') : 'Missing',
+    resume: app.hasResume || app.resume_name || app.resumeName ? (app.resumeName || app.resume_name || 'Uploaded') : 'Missing',
+    appId: app.id || ''
+  };
 }
 function personCard(person){
   const region=person.region || regionForState(person.state);
   const app=applicationStatus(person);
   const uploads=uploadStatus(person);
-  return `<article class="adminCandidateCard">
-    <div class="adminCandidateHead">
+  const reportCount=person.reports.length;
+  const appDisabled = person.application ? '' : 'disabled';
+  const safeKey=encodeURIComponent(person.key);
+  const outstanding=incompleteAssignments(person);
+  const archived=person.archived;
+  return `<article class="adminCandidateCard expandableAdminCard ${archived?'archivedAdminCard':''}" id="candidate-${safeKey}">
+    <button type="button" class="adminCandidateSummary" data-candidate-toggle="${esc(person.key)}">
       <div class="adminCandidateIdentity">
         <div class="adminAvatar">${esc(initialsFor(person.name))}</div>
         <div>
           <div class="adminNameRow">
             <h3>${esc(person.name||'Unnamed Candidate')}</h3>
             <span class="adminPill region">${esc(region)} Region</span>
+            ${archived?'<span class="adminPill archived">Archived</span>':''}
           </div>
           <div class="adminMeta">
             <span>${esc(STATES[person.state]||person.state||'No state')}</span>
@@ -177,43 +333,81 @@ function personCard(person){
         </div>
       </div>
       <div class="adminHeadStatus">
-        <span class="adminPill pending">Application ${esc(app.status)}</span>
-        ${itemStatusPill(person)}
+        <span class="adminPill ${app.tone==='submitted'?'complete':app.tone==='draft'?'pending':'pending'}">Application ${esc(app.status)}</span>
+        <span class="adminPill ${reportCount?'complete':'pending'}">${reportCount} Assessment${reportCount===1?'':'s'} Complete</span>
+        ${outstanding.length?`<span class="adminPill pending">${outstanding.length} Incomplete</span>`:'<span class="adminPill neutral">No Action Needed</span>'}
+        <span class="adminChevron">⌄</span>
       </div>
-    </div>
+    </button>
 
-    <div class="adminCandidateFile">
-      <section class="adminFileSection">
-        <div class="adminFileHead"><strong>Assessments</strong><span>${person.reports.length} completed</span></div>
-        ${person.reports.map(reportRow).join('') || emptyAdminRow('No assessments completed yet.')}
-      </section>
+    <div class="adminCandidateExpanded">
+      ${archived?'<div class="adminArchiveNotice">This candidate is archived. Records are preserved and hidden from the active candidate list.</div>':''}
+      <div class="adminExpandGrid">
+        <section class="adminFileSection">
+          <div class="adminFileHead"><strong>Progress</strong><span>Open completed or in-progress work</span></div>
+          ${progressRow(person,'discernment_application','Discernment Center Application',person.application?app.status:'Not Started',person.application?app.complete:'—',person.application?`<button type="button" class="adminTiny" data-open-application="${esc(person.application.id)}">Open</button>`:'')}
+          ${progressRow(person,'character_qualities','Character Qualities Assessment',reportFor(person,'character_qualities')?'Completed':hasAssigned(person,'character_qualities')?'Assigned':'Hidden',reportFor(person,'character_qualities')?.overallLabel||'—',reportFor(person,'character_qualities')?`<button type="button" class="adminTiny" data-open-report="${esc(reportFor(person,'character_qualities').id)}">Open</button>`:'')}
+          ${progressRow(person,'ministry_readiness','Ministry Readiness Inventory',reportFor(person,'ministry_readiness')?'Completed':hasAssigned(person,'ministry_readiness')?'Assigned':'Hidden',reportFor(person,'ministry_readiness')?`${reportFor(person,'ministry_readiness').overall}%`:'—',reportFor(person,'ministry_readiness')?`<button type="button" class="adminTiny" data-open-report="${esc(reportFor(person,'ministry_readiness').id)}">Open</button>`:'')}
+        </section>
 
-      <section class="adminFileSection">
-        <div class="adminFileHead"><strong>Forms</strong><span>Application module next</span></div>
-        <div class="adminItemRow">
-          <div>
-            <div class="adminItemName">Discernment Center Application</div>
-            <div class="adminItemDesc">Personal, family, faith, ministry, financial, vision, waiver, and conviction responses.</div>
+        <section class="adminFileSection">
+          <div class="adminFileHead"><strong>Assignments</strong><span>Click to add or hide items</span></div>
+          <div class="assignmentToggleList" data-person-key="${esc(person.key)}">
+            ${ASSIGNMENT_ITEMS.map(item=>assignmentToggle(person,item)).join('')}
           </div>
-          <div class="adminMetric ${app.tone==='submitted'?'green':app.tone==='draft'?'gold':''}"><div class="num">${esc(app.status)}</div><div class="cap">Status</div></div>
-          <div class="adminMetric"><div class="num">${esc(app.complete)}</div><div class="cap">Complete</div></div>
-          <div class="adminMetric"><div class="num">${esc(app.date)}</div><div class="cap">Updated</div></div>
-          <button type="button" class="adminOpen secondary" disabled>${esc(app.action)}</button>
-        </div>
-      </section>
+          <div class="assignmentSaveBar" data-savebar-for="${esc(person.key)}">
+            <div><strong>Unsaved assignment changes</strong><span>Save changes to update the candidate dashboard. First-time assignments will send an email.</span></div>
+            <button type="button" data-save-assignments="${esc(person.key)}">Save Assignment Changes</button>
+          </div>
+        </section>
+      </div>
 
-      <section class="adminFileSection">
+      <section class="adminFileSection compactUploads">
         <div class="adminFileHead"><strong>Uploads</strong><span>Photo and resume</span></div>
         <div class="adminUploadGrid">
-          ${uploadItem('Candidate Photo', uploads.photo)}
-          ${uploadItem('Resume', uploads.resume)}
+          ${uploadItem('Candidate Photo', uploads.photo, uploads.appId, 'photo')}
+          ${uploadItem('Resume', uploads.resume, uploads.appId, 'resume')}
         </div>
       </section>
+
+      <div class="adminRecordActions">
+        ${archived?`<button type="button" class="adminTiny dark" data-restore-candidate="${esc(person.key)}">Restore</button>`:`<button type="button" class="adminTiny" data-archive-candidate="${esc(person.key)}">Archive</button>`}
+        <button type="button" class="adminTiny danger" data-delete-candidate="${esc(person.key)}">Delete</button>
+      </div>
+      <div class="adminDeleteConfirm" data-delete-confirm="${esc(person.key)}">
+        <strong>Delete ${esc(person.name)}?</strong>
+        <p>This should only be used for duplicate or mistaken records.</p>
+        <button type="button" class="adminTiny danger">Confirm Delete</button>
+        <button type="button" class="adminTiny" data-cancel-delete="${esc(person.key)}">Cancel</button>
+      </div>
     </div>
   </article>`;
 }
+function progressRow(person,key,title,status,detail,actionHtml){
+  const completed=assignmentCompleted(person,key);
+  const assigned=hasAssigned(person,key);
+  const dot=completed?'complete':assigned?'pending':'empty';
+  return `<div class="adminProgressRow">
+    <span class="adminProgressDot ${dot}"></span>
+    <div><strong>${esc(title)}</strong><span>${esc(status)} · ${esc(detail||'—')}</span></div>
+    ${completed?'<span class="adminPill complete">Done</span>':assigned?'<span class="adminPill pending">Open</span>':'<span class="adminPill neutral">Hidden</span>'}
+    ${actionHtml||''}
+  </div>`;
+}
+function assignmentToggle(person,item){
+  const assigned=hasAssigned(person,item.key);
+  const ever=hasEverAssigned(person,item.key);
+  const completed=assignmentCompleted(person,item.key);
+  const row=assignmentFor(person,item.key)||{};
+  const state=assigned?'Assigned':ever||completed?'Hidden':'Not Assigned';
+  return `<button type="button" class="assignmentToggle ${assigned?'assigned':'unassigned'} ${ever||completed?'previouslyAssigned':''}" data-assignment-toggle data-person-key="${esc(person.key)}" data-user-id="${esc(person.userId||'')}" data-email="${esc(person.email||'')}" data-name="${esc(person.name||'')}" data-item-key="${esc(item.key)}" data-current="${assigned?'assigned':'hidden'}" data-ever="${ever||completed?'true':'false'}">
+    <span class="assignmentCheck">${assigned?'✓':''}</span>
+    <span><strong>${esc(item.fullTitle)}</strong><small>${assigned?'Visible in candidate portal':ever||completed?'Previously assigned or started · currently hidden':'Hidden until assigned'}</small></span>
+    <em>${esc(state)}</em>
+  </button>`;
+}
 function emptyAdminRow(message){return `<div class="adminEmptyRow">${esc(message)}</div>`}
-function uploadItem(title,status){
+function uploadItem(title,status,appId,kind){
   const uploaded=status && status!=='Missing';
   return `<div class="adminUploadItem">
     <div>
@@ -221,10 +415,71 @@ function uploadItem(title,status){
       <div class="adminUploadMeta">${uploaded?esc(status):'Not uploaded'}</div>
     </div>
     <div class="adminMiniActions">
-      <button type="button" class="adminTiny" disabled>${uploaded?'View':'Missing'}</button>
-      ${uploaded?'<button type="button" class="adminTiny dark">Download</button>':''}
+      <button type="button" class="adminTiny" ${uploaded?`data-application-id="${esc(appId)}" data-file-kind="${esc(kind)}"`:'disabled'}>${uploaded?'View':'Missing'}</button>
     </div>
   </div>`;
+}
+function toggleCandidateCard(key){
+  const id=`candidate-${encodeURIComponent(key)}`;
+  const card=document.getElementById(id);
+  if(!card) return;
+  document.querySelectorAll('.expandableAdminCard').forEach(other=>{if(other!==card) other.classList.remove('open')});
+  card.classList.toggle('open');
+}
+function toggleAssignmentUi(btn){
+  const current=btn.dataset.current;
+  const ever=btn.dataset.ever==='true';
+  const willAssign=btn.classList.contains('unassigned');
+  btn.classList.remove('assigned','unassigned','willAssign','willAdd','willRemove');
+  if(willAssign){
+    btn.classList.add('assigned', ever?'willAdd':'willAssign');
+    btn.querySelector('.assignmentCheck').textContent='✓';
+    btn.querySelector('em').textContent=ever?'Will Add':'Will Assign';
+  }else{
+    btn.classList.add('unassigned','willRemove');
+    btn.querySelector('.assignmentCheck').textContent='';
+    btn.querySelector('em').textContent='Will Remove';
+  }
+  btn.dataset.changed='true';
+  document.querySelector(`[data-savebar-for="${cssEscape(btn.dataset.personKey)}"]`)?.classList.add('show');
+}
+async function saveAssignmentChanges(personKey){
+  const list=document.querySelector(`.assignmentToggleList[data-person-key="${cssEscape(personKey)}"]`);
+  if(!list) return;
+  const changed=[...list.querySelectorAll('[data-assignment-toggle][data-changed="true"]')].map(btn=>({
+    userId:btn.dataset.userId,
+    email:btn.dataset.email,
+    name:btn.dataset.name,
+    itemKey:btn.dataset.itemKey,
+    status:btn.classList.contains('assigned')?'assigned':'hidden'
+  }));
+  if(!changed.length) return;
+  try{
+    await adminFetch({action:'updateAssignments', assignments:changed});
+    await loadSubmissions();
+  }catch(err){
+    alert(err.message||'Could not save assignment changes.');
+  }
+}
+async function archiveCandidate(personKey,archived){
+  const person=groupCandidates(submissions).find(p=>p.key===personKey);
+  if(!person) return;
+  try{
+    await adminFetch({action:'archiveCandidate', userId:person.userId, email:person.email, name:person.name, archived});
+    await loadSubmissions();
+  }catch(err){
+    alert(err.message||'Could not update archive status.');
+  }
+}
+function showDeleteConfirm(personKey){
+  document.querySelector(`[data-delete-confirm="${cssEscape(personKey)}"]`)?.classList.add('show');
+}
+function hideDeleteConfirm(personKey){
+  document.querySelector(`[data-delete-confirm="${cssEscape(personKey)}"]`)?.classList.remove('show');
+}
+function cssEscape(value){
+  if(window.CSS&&CSS.escape) return CSS.escape(value);
+  return String(value).replace(/["\\]/g,'\\$&');
 }
 function reportRow(r){
   const date=r.submittedAt?formatDate(r.submittedAt):'—';
@@ -532,7 +787,7 @@ function printCurrentReport(){
   const title = `${candidateName} - ${reportTitle}`;
   const safeTitle = title.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
 
-  const report = document.getElementById('adminReport');
+  const report = window.currentAdminReportElement || document.getElementById('adminReport');
   if (!report || report.classList.contains('hidden')) return;
 
   const printWindow = window.open('', '_blank');
@@ -621,26 +876,142 @@ async function downloadReport(){
  printCurrentReport();
 }
 
-function closeReport(){
-  const adminReport = document.getElementById('adminReport');
-  if (!adminReport) return;
-  adminReport.innerHTML = '';
-  adminReport.classList.add('hidden');
-  window.currentAdminReport = null;
-  window.currentAdminApplication = null;
+function ensureInlineReportStyles(){
+  if(document.getElementById('adminInlineReportStyles')) return;
+  const style=document.createElement('style');
+  style.id='adminInlineReportStyles';
+  style.textContent=`
+    .adminInlineReport{
+      margin:18px 20px 22px;
+      background:#fff;
+      border:1px solid #d9e2ec;
+      border-radius:24px;
+      box-shadow:0 18px 44px rgba(15,23,42,.08);
+      overflow:hidden;
+    }
+    .adminInlineReportHeader{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      padding:12px 16px;
+      border-bottom:1px solid #e7edf5;
+      background:#f8fafc;
+      color:#475569;
+      font-size:12px;
+      font-weight:900;
+      letter-spacing:.09em;
+      text-transform:uppercase;
+    }
+    .adminInlineReportHeader span{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+    }
+    .adminReportCollapseIcon{
+      width:32px;
+      height:32px;
+      border-radius:12px;
+      border:1px solid #d9e2ec;
+      background:#fff;
+      color:#0f172a;
+      display:grid;
+      place-items:center;
+      padding:0;
+      font-size:18px;
+      font-weight:950;
+      line-height:1;
+      cursor:pointer;
+      box-shadow:none;
+    }
+    .adminReportCollapseIcon:hover{
+      background:#0f172a;
+      color:#fff;
+      border-color:#0f172a;
+      transform:none;
+      box-shadow:none;
+    }
+    .adminInlineReportBody{
+      padding:18px;
+      background:#fff;
+    }
+    .adminInlineReportBody > .isaReport,
+    .adminInlineReportBody > .isaReportV44,
+    .adminInlineReportBody > .candidateReport{
+      margin-top:0!important;
+    }
+    @media(max-width:760px){
+      .adminInlineReport{margin:14px 12px 18px;border-radius:20px;}
+      .adminInlineReportBody{padding:12px;}
+    }
+    @media print{
+      .adminInlineReportHeader,.adminReportCollapseIcon,.noPrint{display:none!important;}
+      .adminInlineReport{box-shadow:none!important;border:none!important;margin:0!important;}
+      .adminInlineReportBody{padding:0!important;}
+    }
+  `;
+  document.head.appendChild(style);
 }
 
-async function openReport(id){
-  adminReport.classList.remove('hidden');
-  adminReport.innerHTML='<p class="muted">Loading report...</p>';
+function closeReport(){
+  document.querySelectorAll('.adminInlineReport').forEach(el=>el.remove());
+  const adminReport = document.getElementById('adminReport');
+  if (adminReport){
+    adminReport.innerHTML = '';
+    adminReport.classList.add('hidden');
+  }
+  window.currentAdminReport = null;
+  window.currentAdminApplication = null;
+  window.currentAdminReportElement = null;
+}
+
+function reportHostForTrigger(trigger){
+  if(!trigger) return null;
+  return trigger.closest('.expandableAdminCard') || trigger.closest('.adminCandidateCard') || trigger.closest('[data-card]');
+}
+
+async function openReport(id, trigger){
+  ensureInlineReportStyles();
+  closeReport();
+
+  const card = reportHostForTrigger(trigger);
+  const inlineReport = document.createElement('section');
+  inlineReport.className = 'adminInlineReport';
+  inlineReport.innerHTML = `
+    <div class="adminInlineReportHeader noPrint">
+      <span>Candidate Report</span>
+      <button type="button" class="adminReportCollapseIcon" title="Close report" aria-label="Close report">×</button>
+    </div>
+    <div class="adminInlineReportBody"><p class="muted">Loading report...</p></div>
+  `;
+
+  const body = inlineReport.querySelector('.adminInlineReportBody');
+  inlineReport.querySelector('.adminReportCollapseIcon').addEventListener('click', closeReport);
+
+  if(card){
+    card.appendChild(inlineReport);
+  }else{
+    const fallback = document.getElementById('adminReport');
+    if(fallback){
+      fallback.classList.remove('hidden');
+      fallback.innerHTML='';
+      fallback.appendChild(inlineReport);
+    }
+  }
+
   try{
     const data=await adminFetch({id});
+    if(!data.submission){
+      throw new Error('Could not load this report. The admin function did not return a submission for this report ID.');
+    }
     window.currentAdminReport=data.submission;
     const actionLabel='Print / Save as PDF';
-    adminReport.innerHTML=reportHtml(data.submission)+`<div class="actions reportPrintActions"><button type="button" onclick="downloadReport()">${actionLabel}</button><button type="button" class="secondary" onclick="closeReport()">Close Report</button></div>`;
-    window.scrollTo({top:adminReport.offsetTop-10,behavior:'smooth'});
+    body.innerHTML=reportHtml(data.submission)+`<div class="actions reportPrintActions noPrint"><button type="button" onclick="downloadReport()">${actionLabel}</button><button type="button" class="secondary" onclick="closeReport()">Close Report</button></div>`;
+    window.currentAdminReportElement=body;
+    window.scrollTo({top:inlineReport.offsetTop-12,behavior:'smooth'});
   }catch(err){
-    adminReport.innerHTML=`<p class="warningText">${esc(err.message)}</p>`;
+    body.innerHTML=`<p class="warningText">${esc(err.message)}</p>`;
+    window.currentAdminReportElement=body;
   }
 }
 
@@ -805,170 +1176,8 @@ function reportHtml(record){
 function esc(value){return String(value??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));}
 
 
-// Application-aware admin dashboard overrides
-function candidateKeyFromParts(email, userId, name, phone){
-  if(userId) return `user:${userId}`;
-  const e=String(email||'').trim().toLowerCase();
-  if(e) return `email:${e}`;
-  return `candidate:${String(name||'').trim().toLowerCase()}|${String(phone||'').trim()}`;
-}
-function groupCandidates(rows){
-  const map=new Map();
-  for(const r of rows){
-    const key=candidateKeyFromParts(r.email, r.userId, r.name, r.phone);
-    if(!map.has(key)){
-      map.set(key,{key,userId:r.userId||'',name:r.name||'Unnamed Candidate',email:r.email||'',phone:r.phone||'',state:r.state||'',married:r.married||'',reports:[],application:null});
-    }
-    const person=map.get(key);
-    person.userId=person.userId || r.userId || '';
-    person.name=person.name==='Unnamed Candidate' && r.name ? r.name : person.name;
-    person.email=person.email || r.email || '';
-    person.phone=person.phone || r.phone || '';
-    person.state=person.state || r.state || '';
-    person.married=person.married || r.married || '';
-    person.reports.push(r);
-  }
-  for(const app of applications){
-    const key=candidateKeyFromParts(app.email, app.userId, app.name, app.phone);
-    if(!map.has(key)){
-      map.set(key,{key,userId:app.userId||'',name:app.name||'Unnamed Candidate',email:app.email||'',phone:app.phone||'',state:app.state||'',married:'',reports:[],application:app});
-    }
-    const person=map.get(key);
-    person.application=app;
-    person.userId=person.userId || app.userId || '';
-    person.name=person.name==='Unnamed Candidate' && app.name ? app.name : person.name;
-    person.email=person.email || app.email || '';
-    person.phone=person.phone || app.phone || '';
-    person.state=person.state || app.state || '';
-  }
-  return Array.from(map.values()).map(person=>{
-    person.reports.sort((a,b)=>new Date(b.submittedAt||0)-new Date(a.submittedAt||0));
-    const dates=[person.reports[0]?.submittedAt, person.application?.updatedAt, person.application?.submittedAt].filter(Boolean);
-    person.latestAt=dates.sort((a,b)=>new Date(b)-new Date(a))[0] || '';
-    const scores=person.reports.map(r=>Number(r.overall||0)).filter(Boolean);
-    person.highestOverall=scores.length?Math.max(...scores):0;
-    person.lowestOverall=scores.length?Math.min(...scores):0;
-    person.region=person.application?.region || regionForState(person.state);
-    return person;
-  });
-}
-function renderList(){
-  let people=groupCandidates(submissions);
-  const q=(searchInput.value||'').toLowerCase().trim();
-  const selectedRegion=regionFilter.value;
-  if(q){
-    people=people.filter(person=>{
-      const reportText=person.reports.map(r=>`${assessmentTitle(r)} ${r.overallLabel} ${r.overall}`).join(' ');
-      const appText=person.application ? `application ${person.application.status} ${person.application.completion}` : '';
-      return `${person.name} ${person.email} ${person.phone} ${person.state} ${STATES[person.state]||''} ${person.region} ${reportText} ${appText}`.toLowerCase().includes(q);
-    });
-  }
-  if(selectedRegion) people=people.filter(person=>person.region===selectedRegion);
-  const sort=sortSelect.value;
-  people.sort((a,b)=>{
-    if(sort==='oldest') return new Date(a.latestAt||0)-new Date(b.latestAt||0);
-    if(sort==='highest') return Number(b.highestOverall||0)-Number(a.highestOverall||0);
-    if(sort==='lowest') return Number(a.lowestOverall||0)-Number(b.lowestOverall||0);
-    if(sort==='name') return String(a.name||'').localeCompare(String(b.name||''));
-    if(sort==='region') return String(a.region||'').localeCompare(String(b.region||'')) || String(a.name||'').localeCompare(String(b.name||''));
-    return new Date(b.latestAt||0)-new Date(a.latestAt||0);
-  });
-  const itemCount=submissions.length + applications.length;
-  const candidateTotal=groupCandidates(submissions).length;
-  if (typeof candidateCountStat !== 'undefined') candidateCountStat.textContent=String(candidateTotal);
-  if (typeof completedItemCountStat !== 'undefined') completedItemCountStat.textContent=String(itemCount);
-  countLine.textContent=`Showing ${people.length} candidate file${people.length===1?'':'s'}`;
-  if(!people.length){submissionsList.innerHTML='<div class="card"><p class="muted">No candidates found.</p></div>';return;}
-  submissionsList.innerHTML=people.map(personCard).join('');
-  document.querySelectorAll('[data-open-report]').forEach(btn=>btn.addEventListener('click',()=>openReport(btn.dataset.openReport)));
-  document.querySelectorAll('[data-open-application]').forEach(btn=>btn.addEventListener('click',()=>openApplication(btn.dataset.openApplication)));
-  document.querySelectorAll('[data-file-kind]').forEach(btn=>btn.addEventListener('click',()=>openApplicationFile(btn.dataset.applicationId, btn.dataset.fileKind)));
-}
-function applicationStatus(person){
-  const app=person.application;
-  if(!app) return {status:'Not Started', complete:'—', date:'—', tone:'neutral', action:'View Candidate'};
-  const submitted=app.status==='submitted';
-  return {status:submitted?'Submitted':'Draft', complete:`${app.completion||0}%`, date:formatDate(app.submittedAt||app.updatedAt), tone:submitted?'submitted':'draft', action:submitted?'Open Application':'View Draft'};
-}
-function uploadStatus(person){
-  const app=person.application||{};
-  return {
-    photo: app.hasPhoto ? (app.photoName || 'Uploaded') : 'Missing',
-    resume: app.hasResume ? (app.resumeName || 'Uploaded') : 'Missing',
-    appId: app.id || ''
-  };
-}
-function personCard(person){
-  const region=person.region || regionForState(person.state);
-  const app=applicationStatus(person);
-  const uploads=uploadStatus(person);
-  const reportCount=person.reports.length;
-  const appDisabled = person.application ? '' : 'disabled';
-  return `<article class="adminCandidateCard">
-    <div class="adminCandidateHead">
-      <div class="adminCandidateIdentity">
-        <div class="adminAvatar">${esc(initialsFor(person.name))}</div>
-        <div>
-          <div class="adminNameRow">
-            <h3>${esc(person.name||'Unnamed Candidate')}</h3>
-            <span class="adminPill region">${esc(region)} Region</span>
-          </div>
-          <div class="adminMeta">
-            <span>${esc(STATES[person.state]||person.state||'No state')}</span>
-            <span>${esc(person.email||'No email')}</span>
-            <span>${esc(person.phone||'No phone')}</span>
-            <span>Last activity: ${esc(latestDate(person))}</span>
-          </div>
-        </div>
-      </div>
-      <div class="adminHeadStatus">
-        <span class="adminPill ${app.tone==='submitted'?'complete':app.tone==='draft'?'pending':'pending'}">Application ${esc(app.status)}</span>
-        <span class="adminPill ${reportCount?'complete':'pending'}">${reportCount} Assessment${reportCount===1?'':'s'} Complete</span>
-      </div>
-    </div>
 
-    <div class="adminCandidateFile">
-      <section class="adminFileSection">
-        <div class="adminFileHead"><strong>Assessments</strong><span>${reportCount} completed</span></div>
-        ${person.reports.map(reportRow).join('') || emptyAdminRow('No assessments completed yet.')}
-      </section>
-
-      <section class="adminFileSection">
-        <div class="adminFileHead"><strong>Forms</strong><span>${person.application ? app.status.toLowerCase() : 'not started'}</span></div>
-        <div class="adminItemRow">
-          <div>
-            <div class="adminItemName">Discernment Center Application</div>
-            <div class="adminItemDesc">Personal, family, faith, ministry, financial, vision, waiver, and conviction responses.</div>
-          </div>
-          <div class="adminMetric ${app.tone==='submitted'?'green':app.tone==='draft'?'gold':''}"><div class="num">${esc(app.status)}</div><div class="cap">Status</div></div>
-          <div class="adminMetric"><div class="num">${esc(app.complete)}</div><div class="cap">Complete</div></div>
-          <div class="adminMetric"><div class="num">${esc(app.date)}</div><div class="cap">Updated</div></div>
-          <button type="button" class="adminOpen ${app.tone==='submitted'?'green':app.tone==='draft'?'gold':'secondary'}" data-open-application="${esc(person.application?.id||'')}" ${appDisabled}>${esc(app.action)}</button>
-        </div>
-      </section>
-
-      <section class="adminFileSection">
-        <div class="adminFileHead"><strong>Uploads</strong><span>Photo and resume</span></div>
-        <div class="adminUploadGrid">
-          ${uploadItem('Candidate Photo', uploads.photo, uploads.appId, 'photo')}
-          ${uploadItem('Resume', uploads.resume, uploads.appId, 'resume')}
-        </div>
-      </section>
-    </div>
-  </article>`;
-}
-function uploadItem(title,status,appId,kind){
-  const uploaded=status && status!=='Missing';
-  return `<div class="adminUploadItem">
-    <div>
-      <div class="adminUploadTitle">${esc(title)}</div>
-      <div class="adminUploadMeta">${uploaded?esc(status):'Not uploaded'}</div>
-    </div>
-    <div class="adminMiniActions">
-      <button type="button" class="adminTiny" ${uploaded?`data-application-id="${esc(appId)}" data-file-kind="${esc(kind)}"`:'disabled'}>${uploaded?'View':'Missing'}</button>
-    </div>
-  </div>`;
-}
+/* Removed duplicate legacy application-aware admin overrides. */
 
 function printCurrentApplication(){
   const app = window.currentAdminApplication;
@@ -1092,11 +1301,35 @@ function printCurrentApplication(){
 
 
 function findApplication(id){ return applications.find(app=>String(app.id)===String(id)); }
-async function openApplication(id){
+async function openApplication(id, trigger){
+  ensureInlineReportStyles();
+  closeReport();
+
   const app=findApplication(id);
   if(!app){return}
-  adminReport.classList.remove('hidden');
-  adminReport.innerHTML='<p class="muted">Loading application...</p>';
+
+  const card = reportHostForTrigger(trigger);
+  const inlineReport = document.createElement('section');
+  inlineReport.className = 'adminInlineReport adminInlineApplication';
+  inlineReport.innerHTML = `
+    <div class="adminInlineReportHeader noPrint">
+      <span>Candidate Application</span>
+      <button type="button" class="adminReportCollapseIcon" title="Close application" aria-label="Close application">×</button>
+    </div>
+    <div class="adminInlineReportBody"><p class="muted">Loading application...</p></div>
+  `;
+
+  const body = inlineReport.querySelector('.adminInlineReportBody');
+  inlineReport.querySelector('.adminReportCollapseIcon').addEventListener('click', closeReport);
+
+  if(card){
+    card.appendChild(inlineReport);
+  }else{
+    adminReport.classList.remove('hidden');
+    adminReport.innerHTML='';
+    adminReport.appendChild(inlineReport);
+  }
+
   window.currentAdminApplication=app;
 
   if(app.hasPhoto && !app.photoUrl){
@@ -1106,11 +1339,12 @@ async function openApplication(id){
       if(res.ok && data.ok && data.url){
         app.photoUrl=data.url;
       }
-    }catch(_){}
+    }catch(_){ }
   }
 
-  adminReport.innerHTML=applicationHtml(app)+`<div class="actions reportPrintActions"><button type="button" onclick="printCurrentApplication()">Print / Save as PDF</button><button type="button" class="secondary" onclick="closeReport()">Close Application</button></div>`;
-  window.scrollTo({top:adminReport.offsetTop-10,behavior:'smooth'});
+  body.innerHTML=applicationHtml(app)+`<div class="actions reportPrintActions noPrint"><button type="button" onclick="printCurrentApplication()">Print / Save as PDF</button><button type="button" class="secondary" onclick="closeReport()">Close Application</button></div>`;
+  window.currentAdminReportElement=body;
+  window.scrollTo({top:inlineReport.offsetTop-12,behavior:'smooth'});
 }
 function applicationHtml(app){
   const a=app.application||{};

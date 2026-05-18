@@ -8,11 +8,18 @@
   const accessToken = session.data?.session?.access_token || '';
 
   const profile = await dcAuth.getProfile(user.id).catch(() => null);
+  const profileComplete = Boolean(profile?.full_name && profile?.phone && profile?.state && profile?.married);
+  if(!profileComplete){
+    window.location.href = 'profile.html?next=dashboard';
+    return;
+  }
   document.getElementById('welcomeTitle').textContent = `Welcome${profile?.full_name ? `, ${profile.full_name}` : ''}`;
 
   const workList = document.getElementById('candidateWorkList');
 
   let applicationRecord = null;
+  let assignments = [];
+
   try {
     const res = await fetch('/.netlify/functions/application-get', {
       headers: { Authorization: `Bearer ${accessToken}` }
@@ -20,6 +27,16 @@
     const data = await res.json().catch(() => ({}));
     if (data.ok && data.application) applicationRecord = data.application;
   } catch (_) {}
+
+  try {
+    const res = await fetch('/.netlify/functions/candidate-assignments-get', {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data.ok && Array.isArray(data.assignments)) assignments = data.assignments;
+  } catch (_) {}
+
+  const assignedKeys = new Set(assignments.filter(a => a.status === 'assigned').map(a => a.item_key));
 
   const { data: reports, error } = await sb
     .from('assessment_results')
@@ -36,20 +53,9 @@
   const characterReport = allReports.find(r => (r.scores?.assessmentType || '') !== 'isa_readiness');
   const isaReport = allReports.find(r => r.scores?.assessmentType === 'isa_readiness');
 
-  const applicationSubmitted = applicationRecord?.status === 'submitted';
-  const assessmentsCompleted = [characterReport, isaReport].filter(Boolean).length;
-  const totalCompleted = (applicationSubmitted ? 1 : 0) + assessmentsCompleted;
-  const totalRequiredItems = 3;
-  const stillToComplete = Math.max(totalRequiredItems - totalCompleted, 0);
-
-  setText('applicationSubmittedCount', applicationSubmitted ? '1' : '0');
-  setText('assessmentsCompletedCount', String(assessmentsCompleted));
-  setText('totalCompletedCount', String(totalCompleted));
-  setText('stillToCompleteCount', String(stillToComplete));
-
-  workList.innerHTML = [
-    applicationCard(applicationRecord),
-    assessmentCard({
+  const assignedItems = [
+    assignedKeys.has('discernment_application') ? applicationCard(applicationRecord) : '',
+    assignedKeys.has('character_qualities') ? assessmentCard({
       title: 'Character Qualities Assessment',
       description: 'Fifteen character qualities used to help the Discernment Center team discuss readiness, strengths, and growth areas.',
       report: characterReport,
@@ -57,8 +63,8 @@
       startUrl: 'assessment.html',
       retakeUrl: 'assessment.html',
       unit: ''
-    }),
-    assessmentCard({
+    }) : '',
+    assignedKeys.has('ministry_readiness') ? assessmentCard({
       title: 'Ministry Readiness Inventory',
       description: 'Church planting, entrepreneurial leadership, ministry experience, and relational evangelism readiness profile.',
       report: isaReport,
@@ -66,8 +72,39 @@
       startUrl: 'isa-assessment.html',
       retakeUrl: 'isa-assessment.html',
       unit: '%'
-    })
-  ].join('');
+    }) : ''
+  ].filter(Boolean);
+
+  const applicationSubmitted = applicationRecord?.status === 'submitted';
+  const assessmentsCompleted = [
+    assignedKeys.has('character_qualities') && characterReport,
+    assignedKeys.has('ministry_readiness') && isaReport
+  ].filter(Boolean).length;
+  const totalCompleted = (assignedKeys.has('discernment_application') && applicationSubmitted ? 1 : 0) + assessmentsCompleted;
+  const totalAssigned = assignedKeys.size;
+  const stillToComplete = Math.max(totalAssigned - totalCompleted, 0);
+
+  setText('applicationSubmittedCount', applicationSubmitted && assignedKeys.has('discernment_application') ? '1' : '0');
+  setText('assessmentsCompletedCount', String(assessmentsCompleted));
+  setText('totalCompletedCount', String(totalCompleted));
+  setText('stillToCompleteCount', String(stillToComplete));
+
+  if (!assignedItems.length) {
+    workList.innerHTML = `<article class="candidateTaskCard compact">
+      <div class="candidateTaskHead">
+        <div class="candidateTaskTitleRow">
+          <div class="candidateCheckIcon">•</div>
+          <div class="candidateTaskTitleText">
+            <h3>No Assigned Items Yet</h3>
+            <p>Your Discernment Center coordinator has not assigned any forms or assessments to your account yet. Please check back later.</p>
+          </div>
+          <span class="candidatePill pending">Waiting</span>
+        </div>
+      </div>
+    </article>`;
+  } else {
+    workList.innerHTML = assignedItems.join('');
+  }
 
   function applicationCard(app) {
     const submitted = app?.status === 'submitted';

@@ -1,1 +1,66 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Create Account | Discernment Center</title><link rel="stylesheet" href="style.css"></head><body><main><section class="hero"><h1>Create Candidate Account</h1><p>Create your account so you can complete assessments and return later to view your reports.</p></section><section class="card authCard"><form id="signupForm"><label>Full Name<input name="name" required></label><label>Email<input name="email" type="email" required></label><label>Password<input name="password" type="password" minlength="8" required></label><label>Phone<input name="phone" required></label><label>State<select name="state" id="state" required></select></label><label>Are you married?<select name="married" required><option value="">Select</option><option>Yes</option><option>No</option></select></label><button type="submit">Create Account</button><p id="authMessage" class="muted"></p><p class="muted">Already have an account? <a href="login.html">Login</a></p></form></section></main><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="auth.js"></script><script src="signup.js"></script></body></html>
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Create Account | Discernment Center</title>
+  <link rel="stylesheet" href="style.css?v=71">
+</head>
+<body>
+<main class="authPageMain signupPageMain">
+  <section class="authShell signupShell">
+    <div class="authIntroPanel signupIntroPanel">
+      <p class="eyebrow">Discernment Center</p>
+      <h1>Create Your Candidate Account</h1>
+      <p class="authLead">Create your login first. Then you’ll complete the candidate profile details needed for assignments, reports, and regional routing.</p>
+
+      <div class="authPathMini">
+        <div><span>1</span><strong>Create login</strong></div>
+        <div><span>2</span><strong>Complete candidate profile</strong></div>
+        <div><span>3</span><strong>View assigned work</strong></div>
+      </div>
+    </div>
+
+    <section class="authFormPanel signupFormPanel">
+      <div class="authFormHeader">
+        <h2>Candidate Signup</h2>
+        <p>Create your account with Google or email.</p>
+      </div>
+
+      <div class="oauthStack">
+        <button type="button" class="oauthBtn google" id="googleSignupBtn">
+          <span class="oauthIcon">G</span>
+          Continue with Google
+        </button>
+      </div>
+
+      <div class="authDivider"><span>or create login with email</span></div>
+
+      <form id="signupForm" class="authForm">
+        <label>Email
+          <input name="email" type="email" autocomplete="email" required>
+        </label>
+
+        <label>Password
+          <input name="password" type="password" autocomplete="new-password" minlength="8" required>
+        </label>
+
+        <div class="profileNotice">
+          After creating your login, you’ll complete your candidate profile details.
+        </div>
+
+        <button type="submit" class="authSubmitBtn">Create Account</button>
+
+        <p id="authMessage" class="authMessage muted"></p>
+
+        <p class="authSwitchText">Already have an account? <a href="login.html">Login</a></p>
+      </form>
+    </section>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="auth.js?v=71"></script>
+<script src="signup.js?v=71"></script>
+</body>
+</html>

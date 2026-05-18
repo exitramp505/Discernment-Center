@@ -1,126 +1,220 @@
-const { getStore } = require('@netlify/blobs');
 const { createClient } = require('@supabase/supabase-js');
+const { Resend } = require('resend');
 
-function getAssessmentStore() {
-  const name = 'discernment-assessments';
-  const siteID = process.env.NETLIFY_SITE_ID;
-  const token = process.env.NETLIFY_AUTH_TOKEN;
-  if (siteID && token) return getStore({ name, siteID, token });
-  return getStore(name);
-}
-function getSupabaseAdmin() {
-  const url = process.env.SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceKey) return null;
-  return createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
-}
+function json(status, body){ return { statusCode: status, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }; }
 
-exports.handler = async (event) => {
-  if (event.httpMethod !== 'POST') return json(405, { ok: false, error: 'Method not allowed' });
-  try {
-    const body = JSON.parse(event.body || '{}');
-    const password = body.password || '';
-    const adminPassword = process.env.ADMIN_PASSWORD;
-    if (!adminPassword) return json(500, { ok: false, error: 'Admin dashboard is not configured. Add ADMIN_PASSWORD in Netlify environment variables.' });
-    if (password !== adminPassword) return json(401, { ok: false, error: 'Incorrect admin password.' });
-
-    const admin = getSupabaseAdmin();
-    if (admin) {
-      if (body.id) {
-        const { data, error } = await admin.from('assessment_results').select('*').eq('id', body.id).maybeSingle();
-        if (error) throw error;
-        if (!data) return json(404, { ok: false, error: 'Submission not found.' });
-        return json(200, { ok: true, submission: recordFromSupabase(data) });
-      }
-      const { data, error } = await admin.from('assessment_results').select('*').order('created_at', { ascending: false });
-      if (error) throw error;
-
-      let applications = [];
-      const appResult = await admin.from('candidate_applications').select('*').order('updated_at', { ascending: false });
-      if (!appResult.error) applications = (appResult.data || []).map(applicationSummary);
-
-      return json(200, { ok: true, submissions: (data || []).map(summaryFromSupabase), applications, source: 'supabase' });
-    }
-
-    const store = getAssessmentStore();
-    if (body.id) {
-      const record = await store.get(`${body.id}.json`, { type: 'json' });
-      if (!record) return json(404, { ok: false, error: 'Submission not found.' });
-      return json(200, { ok: true, submission: record });
-    }
-    const list = await store.list();
-    const blobs = list.blobs || [];
-    const submissions = [];
-    for (const blob of blobs) {
-      if (!blob.key || !blob.key.endsWith('.json')) continue;
-      try { const record = await store.get(blob.key, { type: 'json' }); if (record) submissions.push(summary(record)); } catch (_) {}
-    }
-    submissions.sort((a, b) => new Date(b.submittedAt || 0) - new Date(a.submittedAt || 0));
-    return json(200, { ok: true, submissions, applications: [], source: 'blobs' });
-  } catch (error) {
-    return json(500, { ok: false, error: error.message || 'Unexpected admin dashboard error.' });
-  }
+const ITEM_LABELS = {
+  discernment_application: 'Discernment Center Application',
+  character_qualities: 'Character Qualities Assessment',
+  ministry_readiness: 'Ministry Readiness Inventory',
+  pastoral_reference: 'Pastoral Reference Form'
 };
 
-function applicationSummary(row) {
-  const app = row.application || {};
-  return {
-    id: row.id,
-    userId: row.user_id,
-    name: row.candidate_name || app.fullName || '',
-    email: row.email || app.email || '',
-    phone: row.phone || app.phone || '',
-    state: row.state || app.state || '',
-    region: row.region || app.region || '',
-    status: row.status || 'draft',
-    completion: row.completion ?? 0,
-    updatedAt: row.updated_at,
-    submittedAt: row.submitted_at,
-    application: app,
-    photoName: row.photo_name || '',
-    resumeName: row.resume_name || '',
-    hasPhoto: Boolean(row.photo_path),
-    hasResume: Boolean(row.resume_path)
-  };
+function assignmentUrl(key){
+  const base = process.env.SITE_URL || process.env.URL || '';
+  if(key === 'discernment_application') return `${base}/application.html`;
+  if(key === 'character_qualities') return `${base}/assessment.html`;
+  if(key === 'ministry_readiness') return `${base}/isa-assessment.html`;
+  return `${base}/dashboard.html`;
 }
-function summaryFromSupabase(row) {
+
+async function sendAssignmentEmail({email,name,itemKey}){
+  if(!process.env.RESEND_API_KEY || !process.env.FROM_EMAIL || !email) return {sent:false, skipped:true};
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const itemTitle = ITEM_LABELS[itemKey] || itemKey;
+  const url = assignmentUrl(itemKey);
+  await resend.emails.send({
+    from: process.env.FROM_EMAIL,
+    to: email,
+    subject: `New Discernment Center item assigned: ${itemTitle}`,
+    html: `<div style="font-family:Arial,sans-serif;line-height:1.5;color:#1f2933">
+      <h2 style="margin-bottom:8px;">${itemTitle} has been assigned to you</h2>
+      <p>Hello ${name || 'there'},</p>
+      <p>A new item has been added to your Discernment Center dashboard.</p>
+      <p><strong>${itemTitle}</strong></p>
+      <p><a href="${url}" style="display:inline-block;background:#0f172a;color:#fff;text-decoration:none;padding:12px 16px;border-radius:10px;font-weight:bold;">Open Your Dashboard</a></p>
+      <p style="color:#64748b;font-size:13px;">If you have questions, please contact your Discernment Center coordinator.</p>
+    </div>`
+  });
+  return {sent:true};
+}
+
+function normalizeReport(row){
   const c = row.candidate || {};
   const s = row.scores || {};
   return {
     id: row.id,
     userId: row.user_id,
     submittedAt: row.created_at,
-    name: c.name || c.full_name || '',
-    email: c.email || '',
-    phone: c.phone || '',
-    state: row.state || c.state || '',
+    candidate: c,
+    scores: s,
+    name: c.name || row.name || '',
+    email: c.email || row.email || '',
+    phone: c.phone || row.phone || '',
+    state: c.state || row.state || '',
+    region: c.region || row.region || '',
     married: c.married || '',
-    overall: row.overall ?? s.overall ?? '',
-    overallLabel: row.overall_label || s.overallLabel || '',
-    top: s.top || [],
-    growth: s.growth || [],
-    routedLeader: row.routed_leader || '',
-    emailSent: Boolean(row.email_sent),
-    emailError: row.email_error || '',
-    assessmentType: s.assessmentType || '',
-    assessmentTitle: s.assessmentTitle || ''
+    assessmentType: s.assessmentType || row.assessment_type || 'character_qualities',
+    assessmentTitle: s.assessmentType === 'isa_readiness' ? 'Ministry Readiness Inventory' : 'Character Qualities Assessment',
+    overall: s.overall || row.overall || '',
+    overallLabel: s.overallLabel || row.overall_label || '',
+    emailError: row.email_error || ''
   };
 }
-function recordFromSupabase(row) {
+
+function normalizeApplication(row){
+  const a = row.application || {};
   return {
     id: row.id,
-    submittedAt: row.created_at,
-    routedLeader: row.routed_leader || '',
-    emailSent: Boolean(row.email_sent),
-    emailError: row.email_error || '',
-    candidate: row.candidate || {},
-    scores: row.scores || {},
-    answers: row.answers || {}
+    userId: row.user_id,
+    status: row.status,
+    completion: row.completion,
+    submittedAt: row.submitted_at,
+    updatedAt: row.updated_at,
+    application: a,
+    name: a.fullName || row.name || '',
+    email: a.email || row.email || '',
+    phone: a.phone || row.phone || '',
+    state: a.state || row.state || '',
+    region: a.region || row.region || '',
+    hasPhoto: Boolean(row.photo_path || row.photo_name),
+    hasResume: Boolean(row.resume_path || row.resume_name),
+    photoName: row.photo_name || '',
+    resumeName: row.resume_name || ''
   };
 }
-function summary(record) {
-  const c = record.candidate || {};
-  const s = record.scores || {};
-  return { id: record.id, submittedAt: record.submittedAt, name: c.name || '', email: c.email || '', phone: c.phone || '', state: c.state || '', married: c.married || '', overall: s.overall ?? '', overallLabel: s.overallLabel || '', top: s.top || [], growth: s.growth || [], routedLeader: record.routedLeader || '', emailSent: Boolean(record.emailSent), emailError: record.emailError || '', assessmentType: s.assessmentType || '', assessmentTitle: s.assessmentTitle || '' };
-}
-function json(statusCode, body) { return { statusCode, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }; }
+
+exports.handler = async (event) => {
+  if(event.httpMethod !== 'POST') return json(405,{ok:false,error:'Method not allowed'});
+  try{
+    const body = JSON.parse(event.body || '{}');
+    if(body.password !== process.env.ADMIN_PASSWORD) return json(401,{ok:false,error:'Incorrect admin password.'});
+
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+
+    if(body.id){
+      const { data: report, error: reportByIdError } = await supabase
+        .from('assessment_results')
+        .select('*')
+        .eq('id', body.id)
+        .maybeSingle();
+
+      if(reportByIdError) throw reportByIdError;
+      if(!report) return json(404,{ok:false,error:'Report not found.'});
+
+      return json(200,{ok:true,submission:normalizeReport(report)});
+    }
+
+    if(body.action === 'updateAssignments'){
+      const updates = Array.isArray(body.assignments) ? body.assignments : [];
+      const results = [];
+      for(const u of updates){
+        if(!u.userId && !u.email) continue;
+        let userId = u.userId;
+        if(!userId && u.email){
+          const { data: profile } = await supabase.from('candidate_profiles').select('id,email,full_name').eq('email',u.email).maybeSingle();
+          userId = profile?.id;
+        }
+        if(!userId) continue;
+
+        const { data: existing, error: existingError } = await supabase
+          .from('candidate_assignments')
+          .select('*')
+          .eq('user_id',userId)
+          .eq('item_key',u.itemKey)
+          .maybeSingle();
+        if(existingError) throw existingError;
+
+        const firstTimeAssignment = !existing && u.status === 'assigned';
+
+        const payload = {
+          user_id:userId,
+          candidate_email:u.email || existing?.candidate_email || '',
+          candidate_name:u.name || existing?.candidate_name || '',
+          item_key:u.itemKey,
+          item_type:u.itemKey === 'character_qualities' || u.itemKey === 'ministry_readiness' ? 'assessment' : 'form',
+          status:u.status,
+          assigned_at:u.status === 'assigned' ? (existing?.assigned_at || new Date().toISOString()) : existing?.assigned_at,
+          hidden_at:u.status === 'hidden' ? new Date().toISOString() : null,
+          updated_at:new Date().toISOString()
+        };
+
+        const { data: saved, error: saveError } = await supabase
+          .from('candidate_assignments')
+          .upsert(payload,{onConflict:'user_id,item_key'})
+          .select()
+          .single();
+        if(saveError) throw saveError;
+
+        if(firstTimeAssignment){
+          try{
+            await sendAssignmentEmail({email:payload.candidate_email,name:payload.candidate_name,itemKey:u.itemKey});
+            await supabase.from('candidate_assignments').update({first_assigned_email_sent_at:new Date().toISOString()}).eq('id',saved.id);
+          }catch(emailErr){
+            await supabase.from('candidate_assignments').update({email_error:emailErr.message||'Email failed'}).eq('id',saved.id);
+          }
+        }
+        results.push(saved);
+      }
+      return json(200,{ok:true,assignments:results});
+    }
+
+    if(body.action === 'archiveCandidate'){
+      let userId = body.userId;
+      if(!userId && body.email){
+        const { data: profile } = await supabase.from('candidate_profiles').select('id').eq('email',body.email).maybeSingle();
+        userId = profile?.id;
+      }
+      if(!userId) return json(400,{ok:false,error:'Could not find candidate account.'});
+
+      const { error } = await supabase
+        .from('candidate_assignments')
+        .upsert({
+          user_id:userId,
+          candidate_email:body.email||'',
+          candidate_name:body.name||'',
+          item_key:'candidate_record',
+          item_type:'system',
+          status:'system',
+          candidate_archived:Boolean(body.archived),
+          updated_at:new Date().toISOString()
+        },{onConflict:'user_id,item_key'});
+      if(error) throw error;
+      return json(200,{ok:true});
+    }
+
+    const [
+      {data:profiles,error:profileError},
+      {data:reports,error:reportError},
+      {data:apps,error:appError},
+      assignmentResult
+    ] = await Promise.all([
+      supabase.from('candidate_profiles').select('*').order('created_at',{ascending:false}),
+      supabase.from('assessment_results').select('*').order('created_at',{ascending:false}),
+      supabase.from('candidate_applications').select('*').order('updated_at',{ascending:false}),
+      supabase.from('candidate_assignments').select('*').order('updated_at',{ascending:false})
+    ]);
+
+    if(profileError) throw profileError;
+    if(reportError) throw reportError;
+    if(appError) throw appError;
+
+    let assignmentRows = assignmentResult.data || [];
+    if(assignmentResult.error){
+      const msg = String(assignmentResult.error.message || assignmentResult.error.details || '');
+      const assignmentTableMissing = msg.includes('does not exist') || msg.includes('schema cache') || msg.includes('candidate_assignments');
+      if(!assignmentTableMissing) throw assignmentResult.error;
+      assignmentRows = [];
+    }
+
+    return json(200,{
+      ok:true,
+      profiles:profiles||[],
+      submissions:(reports||[]).map(normalizeReport),
+      applications:(apps||[]).map(normalizeApplication),
+      assignments:assignmentRows
+    });
+  }catch(err){
+    return json(500,{ok:false,error:err.message||'Admin request failed.'});
+  }
+};
