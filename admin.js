@@ -39,6 +39,7 @@ let currentView='active';
 
 const ASSIGNMENT_ITEMS=[
   {key:'ministry_readiness', label:'Readiness', fullTitle:'Ministry Readiness Inventory', type:'assessment'},
+  {key:'ministry_style', label:'Style', fullTitle:'Ministry Style Inventory', type:'assessment'},
   {key:'discernment_application', label:'Application', fullTitle:'Discernment Center Application', type:'form'},
   {key:'character_qualities', label:'Character', fullTitle:'Character Qualities Assessment', type:'assessment'},
   {key:'pastoral_reference', label:'Reference Form', fullTitle:'Pastoral Reference Form', type:'form'}
@@ -85,7 +86,10 @@ async function loadSubmissions(){
 }
 
 function assessmentTitle(r){
-  return r.assessmentTitle || (r.assessmentType==='isa_readiness' ? 'Ministry Readiness Inventory' : 'Character Qualities Assessment');
+  if(r.assessmentTitle) return r.assessmentTitle;
+  if(r.assessmentType==='isa_readiness') return 'Ministry Readiness Inventory';
+  if(r.assessmentType==='ministry_style') return 'Ministry Style Inventory';
+  return 'Character Qualities Assessment';
 }
 function candidateKeyFromEmail(email){
   const clean=String(email||'').trim().toLowerCase();
@@ -214,6 +218,7 @@ function renderList(){
   document.querySelectorAll('[data-archive-candidate]').forEach(btn=>btn.addEventListener('click',()=>archiveCandidate(btn.dataset.archiveCandidate,true)));
   document.querySelectorAll('[data-restore-candidate]').forEach(btn=>btn.addEventListener('click',()=>archiveCandidate(btn.dataset.restoreCandidate,false)));
   document.querySelectorAll('[data-delete-candidate]').forEach(btn=>btn.addEventListener('click',()=>showDeleteConfirm(btn.dataset.deleteCandidate)));
+  document.querySelectorAll('[data-confirm-delete]').forEach(btn=>btn.addEventListener('click',()=>deleteCandidate(btn.dataset.confirmDelete)));
   document.querySelectorAll('[data-cancel-delete]').forEach(btn=>btn.addEventListener('click',()=>hideDeleteConfirm(btn.dataset.cancelDelete)));
   document.querySelectorAll('[data-open-report]').forEach(btn=>btn.addEventListener('click',(event)=>openReport(btn.dataset.openReport, event.currentTarget)));
   document.querySelectorAll('[data-open-application]').forEach(btn=>btn.addEventListener('click',(event)=>openApplication(btn.dataset.openApplication, event.currentTarget)));
@@ -279,13 +284,14 @@ function hasEverAssigned(person,key){
   return Boolean(assignmentFor(person,key));
 }
 function reportFor(person,key){
-  if(key==='character_qualities') return person.reports.find(r=>r.assessmentType!=='isa_readiness');
+  if(key==='character_qualities') return person.reports.find(r=>!['isa_readiness','ministry_style'].includes(r.assessmentType||''));
+  if(key==='ministry_style') return person.reports.find(r=>r.assessmentType==='ministry_style');
   if(key==='ministry_readiness') return person.reports.find(r=>r.assessmentType==='isa_readiness');
   return null;
 }
 function assignmentCompleted(person,key){
   if(key==='discernment_application') return person.application?.status==='submitted';
-  if(key==='character_qualities'||key==='ministry_readiness') return Boolean(reportFor(person,key));
+  if(key==='character_qualities'||key==='ministry_readiness'||key==='ministry_style') return Boolean(reportFor(person,key));
   return false;
 }
 function incompleteAssignments(person){
@@ -346,8 +352,9 @@ function personCard(person){
         <section class="adminFileSection">
           <div class="adminFileHead"><strong>Progress</strong><span>Open completed or in-progress work</span></div>
           ${progressRow(person,'discernment_application','Discernment Center Application',person.application?app.status:'Not Started',person.application?app.complete:'—',person.application?`<button type="button" class="adminTiny" data-open-application="${esc(person.application.id)}">Open</button>`:'')}
-          ${progressRow(person,'character_qualities','Character Qualities Assessment',reportFor(person,'character_qualities')?'Completed':hasAssigned(person,'character_qualities')?'Assigned':'Hidden',reportFor(person,'character_qualities')?.overallLabel||'—',reportFor(person,'character_qualities')?`<button type="button" class="adminTiny" data-open-report="${esc(reportFor(person,'character_qualities').id)}">Open</button>`:'')}
           ${progressRow(person,'ministry_readiness','Ministry Readiness Inventory',reportFor(person,'ministry_readiness')?'Completed':hasAssigned(person,'ministry_readiness')?'Assigned':'Hidden',reportFor(person,'ministry_readiness')?`${reportFor(person,'ministry_readiness').overall}%`:'—',reportFor(person,'ministry_readiness')?`<button type="button" class="adminTiny" data-open-report="${esc(reportFor(person,'ministry_readiness').id)}">Open</button>`:'')}
+          ${progressRow(person,'ministry_style','Ministry Style Inventory',reportFor(person,'ministry_style')?'Completed':hasAssigned(person,'ministry_style')?'Assigned':'Hidden',reportFor(person,'ministry_style')?.overallLabel||'—',reportFor(person,'ministry_style')?`<button type="button" class="adminTiny" data-open-report="${esc(reportFor(person,'ministry_style').id)}">Open</button>`:'')}
+          ${progressRow(person,'character_qualities','Character Qualities Assessment',reportFor(person,'character_qualities')?'Completed':hasAssigned(person,'character_qualities')?'Assigned':'Hidden',reportFor(person,'character_qualities')?.overallLabel||'—',reportFor(person,'character_qualities')?`<button type="button" class="adminTiny" data-open-report="${esc(reportFor(person,'character_qualities').id)}">Open</button>`:'')}
         </section>
 
         <section class="adminFileSection">
@@ -377,7 +384,7 @@ function personCard(person){
       <div class="adminDeleteConfirm" data-delete-confirm="${esc(person.key)}">
         <strong>Delete ${esc(person.name)}?</strong>
         <p>This should only be used for duplicate or mistaken records.</p>
-        <button type="button" class="adminTiny danger">Confirm Delete</button>
+        <button type="button" class="adminTiny danger" data-confirm-delete="${esc(person.key)}">Confirm Delete</button>
         <button type="button" class="adminTiny" data-cancel-delete="${esc(person.key)}">Cancel</button>
       </div>
     </div>
@@ -477,26 +484,72 @@ function showDeleteConfirm(personKey){
 function hideDeleteConfirm(personKey){
   document.querySelector(`[data-delete-confirm="${cssEscape(personKey)}"]`)?.classList.remove('show');
 }
+async function deleteCandidate(personKey){
+  const person=groupCandidates(submissions).find(p=>p.key===personKey);
+  if(!person) return;
+
+  const confirmBox=document.querySelector(`[data-delete-confirm="${cssEscape(personKey)}"]`);
+  const btn=confirmBox?.querySelector('[data-confirm-delete]');
+  const originalText=btn?.textContent || 'Confirm Delete';
+
+  try{
+    if(btn){
+      btn.disabled=true;
+      btn.textContent='Deleting...';
+    }
+
+    await adminFetch({
+      action:'deleteCandidate',
+      userId:person.userId,
+      email:person.email,
+      name:person.name,
+      phone:person.phone
+    });
+
+    if(window.currentAdminReport){
+      closeReport();
+    }
+
+    await loadSubmissions();
+  }catch(err){
+    alert(err.message || 'Could not delete candidate.');
+    if(btn){
+      btn.disabled=false;
+      btn.textContent=originalText;
+    }
+  }
+}
 function cssEscape(value){
   if(window.CSS&&CSS.escape) return CSS.escape(value);
   return String(value).replace(/["\\]/g,'\\$&');
 }
 function reportRow(r){
   const date=r.submittedAt?formatDate(r.submittedAt):'—';
-  const isIsa=r.assessmentType==='isa_readiness';
+  const type=r.assessmentType||'character_qualities';
+  const isIsa=type==='isa_readiness';
+  const isStyle=type==='ministry_style';
   const score=`${esc(r.overall||'')}${isIsa?'%':''}`;
   const label=esc(r.overallLabel||'');
-  const scoreClass=isIsa ? (Number(r.overall)>=70?'green':Number(r.overall)>=50?'blue':'blue') : (Number(r.overall)>=3?'green':'blue');
+  const desc=isIsa
+    ? 'Church planting, entrepreneurial leadership, ministry experience, and relational evangelism.'
+    : isStyle
+      ? 'DISC-informed ministry behavior profile for leadership, communication, team dynamics, and church multiplication.'
+      : '15 character qualities with baseline profile and knockout indicators.';
+  const scoreClass=isIsa
+    ? (Number(r.overall)>=70?'green':Number(r.overall)>=50?'blue':'blue')
+    : isStyle
+      ? 'green'
+      : (Number(r.overall)>=3?'green':'blue');
   return `<div class="adminItemRow">
     <div>
       <div class="adminItemName">${esc(assessmentTitle(r))}</div>
-      <div class="adminItemDesc">${isIsa?'Church planting, entrepreneurial leadership, ministry experience, and relational evangelism.':'15 character qualities with baseline profile and knockout indicators.'}</div>
+      <div class="adminItemDesc">${desc}</div>
       ${r.emailError?`<small class="warningText"><strong>Email Error:</strong> ${esc(r.emailError)}</small>`:''}
     </div>
-    <div class="adminMetric ${scoreClass}"><div class="num">${score}</div><div class="cap">Overall</div></div>
-    <div class="adminMetric"><div class="num">${label||'—'}</div><div class="cap">Rating</div></div>
-    <div class="adminMetric"><div class="num">${esc(date)}</div><div class="cap">Submitted</div></div>
-    <button type="button" class="adminOpen" data-open-report="${esc(r.id)}">Open Report</button>
+    <div class="adminMetric ${scoreClass}"><strong>${score}</strong><span>Overall</span></div>
+    <div class="adminMetric"><strong>${label||'Completed'}</strong><span>Result</span></div>
+    <div class="adminMetric"><strong>${date}</strong><span>Submitted</span></div>
+    <button type="button" class="adminTiny dark" data-open-report="${esc(r.id)}">Open</button>
   </div>`;
 }
 
@@ -1149,6 +1202,9 @@ function isaInDepth(answers, candidate){
 
 function reportHtml(record){
   if ((record.scores||{}).assessmentType === 'isa_readiness') return isaReportHtml(record);
+  if ((record.scores||{}).assessmentType === 'ministry_style' && window.MinistryStyleReport) {
+    return MinistryStyleReport.buildCoachReportHtml(record);
+  }
   const c=record.candidate||{};
   const s=record.scores||{};
   const stateLabel=STATES[c.state]||c.state||'';

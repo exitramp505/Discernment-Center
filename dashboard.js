@@ -50,20 +50,12 @@
   }
 
   const allReports = reports || [];
-  const characterReport = allReports.find(r => (r.scores?.assessmentType || '') !== 'isa_readiness');
+  const characterReport = allReports.find(r => !['isa_readiness','ministry_style'].includes(r.scores?.assessmentType || ''));
   const isaReport = allReports.find(r => r.scores?.assessmentType === 'isa_readiness');
+  const ministryStyleReport = allReports.find(r => r.scores?.assessmentType === 'ministry_style');
 
   const assignedItems = [
     assignedKeys.has('discernment_application') ? applicationCard(applicationRecord) : '',
-    assignedKeys.has('character_qualities') ? assessmentCard({
-      title: 'Character Qualities Assessment',
-      description: 'Fifteen character qualities used to help the Discernment Center team discuss readiness, strengths, and growth areas.',
-      report: characterReport,
-      draftKey: `discernment_character_draft_${(profile?.email || user.email || '').toLowerCase()}`,
-      startUrl: 'assessment.html',
-      retakeUrl: 'assessment.html',
-      unit: ''
-    }) : '',
     assignedKeys.has('ministry_readiness') ? assessmentCard({
       title: 'Ministry Readiness Inventory',
       description: 'Church planting, entrepreneurial leadership, ministry experience, and relational evangelism readiness profile.',
@@ -72,13 +64,32 @@
       startUrl: 'isa-assessment.html',
       retakeUrl: 'isa-assessment.html',
       unit: '%'
+    }) : '',
+    assignedKeys.has('ministry_style') ? assessmentCard({
+      title: 'Ministry Style Inventory',
+      description: 'DISC-informed ministry behavior inventory focused on leadership, communication, team dynamics, and church multiplication.',
+      report: ministryStyleReport,
+      draftKey: `ministry_style_draft_${(profile?.email || user.email || '').toLowerCase()}`,
+      startUrl: 'ministry-style.html',
+      retakeUrl: 'ministry-style.html',
+      unit: ''
+    }) : '',
+    assignedKeys.has('character_qualities') ? assessmentCard({
+      title: 'Character Qualities Assessment',
+      description: 'Fifteen character qualities used to help the Discernment Center team discuss readiness, strengths, and growth areas.',
+      report: characterReport,
+      draftKey: `discernment_character_draft_${(profile?.email || user.email || '').toLowerCase()}`,
+      startUrl: 'assessment.html',
+      retakeUrl: 'assessment.html',
+      unit: ''
     }) : ''
   ].filter(Boolean);
 
   const applicationSubmitted = applicationRecord?.status === 'submitted';
   const assessmentsCompleted = [
     assignedKeys.has('character_qualities') && characterReport,
-    assignedKeys.has('ministry_readiness') && isaReport
+    assignedKeys.has('ministry_readiness') && isaReport,
+    assignedKeys.has('ministry_style') && ministryStyleReport
   ].filter(Boolean).length;
   const totalCompleted = (assignedKeys.has('discernment_application') && applicationSubmitted ? 1 : 0) + assessmentsCompleted;
   const totalAssigned = assignedKeys.size;

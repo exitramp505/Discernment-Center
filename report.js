@@ -154,3 +154,6 @@ function isaReportHtml(record){
   </div>`;
 }
 
+
+
+// v82: Ministry Style report helper loaded through ministry-style-report.js for candidate reports.

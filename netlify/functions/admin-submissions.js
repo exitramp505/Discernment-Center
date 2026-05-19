@@ -55,7 +55,7 @@ function normalizeReport(row){
     region: c.region || row.region || '',
     married: c.married || '',
     assessmentType: s.assessmentType || row.assessment_type || 'character_qualities',
-    assessmentTitle: s.assessmentType === 'isa_readiness' ? 'Ministry Readiness Inventory' : 'Character Qualities Assessment',
+    assessmentTitle: s.assessmentTitle || (s.assessmentType === 'isa_readiness' ? 'Ministry Readiness Inventory' : s.assessmentType === 'ministry_style' ? 'Ministry Style Inventory' : 'Character Qualities Assessment'),
     overall: s.overall || row.overall || '',
     overallLabel: s.overallLabel || row.overall_label || '',
     emailError: row.email_error || ''
@@ -157,6 +157,92 @@ exports.handler = async (event) => {
         results.push(saved);
       }
       return json(200,{ok:true,assignments:results});
+    }
+
+    if(body.action === 'deleteCandidate'){
+      let userId = body.userId || '';
+
+      if(!userId && body.email){
+        const { data: profile } = await supabase
+          .from('candidate_profiles')
+          .select('id')
+          .eq('email', body.email)
+          .maybeSingle();
+
+        userId = profile?.id || '';
+      }
+
+      if(!userId && !body.email){
+        return json(400,{ok:false,error:'Could not identify candidate to delete.'});
+      }
+
+      const deleteResults = [];
+      const storagePaths = [];
+
+      async function collectStorageFiles(){
+        let query = supabase
+          .from('candidate_applications')
+          .select('photo_path,resume_path');
+
+        if(userId){
+          query = query.eq('user_id', userId);
+        }else if(body.email){
+          query = query.eq('email', body.email);
+        }
+
+        const { data, error } = await query;
+        if(error) throw error;
+
+        for(const row of data || []){
+          if(row.photo_path) storagePaths.push(row.photo_path);
+          if(row.resume_path) storagePaths.push(row.resume_path);
+        }
+      }
+
+      async function deleteStorageFiles(){
+        const uniquePaths = [...new Set(storagePaths.filter(Boolean))];
+        if(!uniquePaths.length) return;
+
+        const { data, error } = await supabase
+          .storage
+          .from('candidate-uploads')
+          .remove(uniquePaths);
+
+        if(error) throw error;
+        deleteResults.push(`candidate-uploads:${uniquePaths.length}`);
+      }
+
+      async function deleteFromTable(table, column, value){
+        if(!value) return;
+        const { error } = await supabase.from(table).delete().eq(column, value);
+        if(error) throw error;
+        deleteResults.push(`${table}.${column}`);
+      }
+
+      await collectStorageFiles();
+      await deleteStorageFiles();
+
+      if(userId){
+        await deleteFromTable('candidate_assignments','user_id',userId);
+        await deleteFromTable('candidate_applications','user_id',userId);
+        await deleteFromTable('assessment_results','user_id',userId);
+        await deleteFromTable('candidate_profiles','id',userId);
+
+        try{
+          await supabase.auth.admin.deleteUser(userId);
+          deleteResults.push('auth.users.id');
+        }catch(authDeleteError){
+          // Do not block cleanup if the Auth user was already removed or cannot be deleted locally.
+          deleteResults.push('auth.users.delete_skipped');
+        }
+      }else if(body.email){
+        await deleteFromTable('candidate_assignments','candidate_email',body.email);
+        await deleteFromTable('candidate_applications','email',body.email);
+        await deleteFromTable('assessment_results','email',body.email);
+        await deleteFromTable('candidate_profiles','email',body.email);
+      }
+
+      return json(200,{ok:true,deleted:deleteResults,storageDeleted:storagePaths.length});
     }
 
     if(body.action === 'archiveCandidate'){

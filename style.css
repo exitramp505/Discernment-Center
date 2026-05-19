@@ -2935,3 +2935,101 @@
   }
 }
 
+
+/* v84 admin candidate summary button readability fix
+   The candidate header is a button, so the global button:hover rule was turning
+   the whole card dark blue. Keep the card header white and readable. */
+.adminCandidateSummary,
+.adminCandidateSummary:hover,
+.adminCandidateSummary:focus,
+.adminCandidateSummary:active,
+.expandableAdminCard.open .adminCandidateSummary,
+.expandableAdminCard.open .adminCandidateSummary:hover,
+.expandableAdminCard.open .adminCandidateSummary:focus,
+.expandableAdminCard.open .adminCandidateSummary:active{
+  background:#ffffff!important;
+  color:#172033!important;
+  transform:none!important;
+  box-shadow:none!important;
+}
+
+.adminCandidateSummary h3,
+.adminCandidateSummary:hover h3,
+.adminCandidateSummary:focus h3,
+.adminCandidateSummary:active h3,
+.expandableAdminCard.open .adminCandidateSummary h3{
+  color:#172033!important;
+}
+
+.adminCandidateSummary .adminMeta,
+.adminCandidateSummary:hover .adminMeta,
+.adminCandidateSummary:focus .adminMeta,
+.adminCandidateSummary:active .adminMeta,
+.expandableAdminCard.open .adminCandidateSummary .adminMeta,
+.adminCandidateSummary .adminMeta span,
+.adminCandidateSummary:hover .adminMeta span,
+.adminCandidateSummary:focus .adminMeta span,
+.adminCandidateSummary:active .adminMeta span,
+.expandableAdminCard.open .adminCandidateSummary .adminMeta span{
+  color:#64748b!important;
+}
+
+.adminCandidateSummary .adminAvatar,
+.adminCandidateSummary:hover .adminAvatar,
+.adminCandidateSummary:focus .adminAvatar,
+.adminCandidateSummary:active .adminAvatar{
+  background:#e5eef8!important;
+  color:#1d4ed8!important;
+}
+
+.adminCandidateSummary .adminPill.region,
+.adminCandidateSummary:hover .adminPill.region,
+.adminCandidateSummary:focus .adminPill.region,
+.adminCandidateSummary:active .adminPill.region{
+  background:#e8f1fb!important;
+  color:#1e40af!important;
+  border-color:#cfe1fa!important;
+}
+
+.adminCandidateSummary .adminPill.complete,
+.adminCandidateSummary:hover .adminPill.complete,
+.adminCandidateSummary:focus .adminPill.complete,
+.adminCandidateSummary:active .adminPill.complete{
+  background:#e7f6ee!important;
+  color:#16834a!important;
+  border-color:#bee8cf!important;
+}
+
+.adminCandidateSummary .adminPill.pending,
+.adminCandidateSummary:hover .adminPill.pending,
+.adminCandidateSummary:focus .adminPill.pending,
+.adminCandidateSummary:active .adminPill.pending{
+  background:#fff6dc!important;
+  color:#a16207!important;
+  border-color:#f8e3a2!important;
+}
+
+.adminCandidateSummary .adminPill.neutral,
+.adminCandidateSummary:hover .adminPill.neutral,
+.adminCandidateSummary:focus .adminPill.neutral,
+.adminCandidateSummary:active .adminPill.neutral{
+  background:#f8fafc!important;
+  color:#64748b!important;
+  border-color:#d9e2ec!important;
+}
+
+.adminCandidateSummary .adminChevron,
+.adminCandidateSummary:hover .adminChevron,
+.adminCandidateSummary:focus .adminChevron,
+.adminCandidateSummary:active .adminChevron{
+  background:#ffffff!important;
+  color:#475569!important;
+  border-color:#d9e2ec!important;
+}
+
+.expandableAdminCard.open .adminCandidateSummary .adminChevron{
+  background:#0f172a!important;
+  color:#ffffff!important;
+  border-color:#0f172a!important;
+}
+
