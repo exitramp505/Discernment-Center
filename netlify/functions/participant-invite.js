@@ -1,5 +1,6 @@
 const { Resend } = require('resend');
 const { requireViewer, json, httpError } = require('./_event-access');
+const { enforceRateLimit } = require('./_rate-limit');
 
 const REGION_BY_STATE = {
   WA:'Pacific',HI:'Pacific',AK:'Pacific',AZ:'Pacific',UT:'Pacific',CA:'Pacific',NV:'Pacific',ID:'Pacific',OR:'Pacific',
@@ -28,6 +29,13 @@ exports.handler = async event => {
       throw httpError(403, `Regional leaders can only invite people in the ${viewer.region} Region.`);
     }
 
+    await enforceRateLimit(supabase, {
+      actorId:viewer.id,
+      action:'invite_participant',
+      limit:25,
+      windowMinutes:60
+    });
+
     const { data:existing, error:existingError } = await supabase
       .from('candidate_profiles')
       .select('id,full_name,email,region,archived_at')
@@ -44,7 +52,7 @@ exports.handler = async event => {
     const from = process.env.FROM_EMAIL;
     if (!apiKey || !from) throw httpError(500, 'Invitation email is not configured.');
 
-    const baseUrl = String(process.env.URL || process.env.SITE_URL || 'https://discernmentcenter.netlify.app').replace(/\/$/, '');
+    const baseUrl = String(process.env.URL || process.env.SITE_URL || 'https://cmc-pathway.netlify.app').replace(/\/$/, '');
     const signupUrl = `${baseUrl}/signup.html?invited=1&email=${encodeURIComponent(email)}`;
     const firstName = fullName.split(/\s+/)[0];
     const sender = viewer.full_name || 'Your CMC leader';

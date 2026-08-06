@@ -1,4 +1,5 @@
 const { Resend } = require('resend');
+const { enforceRateLimit } = require('./_rate-limit');
 
 async function sendPathwaySummary({ supabase, participant, viewer, items }) {
   const cleanItems = (Array.isArray(items) ? items : [])
@@ -11,6 +12,13 @@ async function sendPathwaySummary({ supabase, participant, viewer, items }) {
     }))
     .filter(item => item.title);
   if (!cleanItems.length) return { sent:false, skipped:true, reason:'No new items.' };
+
+  await enforceRateLimit(supabase, {
+    actorId:viewer.id,
+    action:'send_pathway_summary',
+    limit:40,
+    windowMinutes:60
+  });
 
   const firstName = String(participant.full_name || '').trim().split(/\s+/)[0] || 'there';
   const subject = cleanItems.length === 1
@@ -48,7 +56,7 @@ async function sendPathwaySummary({ supabase, participant, viewer, items }) {
     };
   }
 
-  const pathwayUrl = `${String(process.env.URL || process.env.SITE_URL || 'https://discernmentcenter.netlify.app').replace(/\/$/, '')}/dashboard.html`;
+  const pathwayUrl = `${String(process.env.URL || process.env.SITE_URL || 'https://cmc-pathway.netlify.app').replace(/\/$/, '')}/dashboard.html`;
   const itemRows = cleanItems.map(item => `
     <tr>
       <td style="padding:14px 0;border-bottom:1px solid #eadfce">
